@@ -14,3 +14,4 @@ anyhow = "1.0"
 indicatif = { version = "*" }
 rustc-hash = "2.1.1"
 atoi = "2.0.0"
+memchr = "2.7.5"

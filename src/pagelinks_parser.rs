@@ -47,6 +47,7 @@ pub fn build_pagelinks(
 
     while decompressed_reader.read_until(b'\n', &mut line_buf)? != 0 {
         parse_line_bytes(&line_buf, &redirect_targets, &id_to_title, &mut page_links);
+        line_buf.clear();
     }
 
     println!("Total links parsed: {}", page_links.len());
@@ -144,3 +145,4 @@ fn parse_line_bytes(
 
 // 280s
 // flate2 zlib-rs 250s
+// byte parser 140s

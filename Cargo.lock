@@ -240,6 +240,7 @@ dependencies = [
  "bincode",
  "flate2",
  "indicatif",
+ "memchr",
  "regex",
  "rustc-hash",
  "serde",
