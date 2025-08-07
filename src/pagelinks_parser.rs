@@ -195,3 +195,4 @@ fn parse_line_bytes(
 // 280s
 // flate2 zlib-rs 250s
 // byte parser 140s
+// byte parser with memchar 147s
