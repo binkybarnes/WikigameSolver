@@ -35,8 +35,8 @@ pub fn build_and_save_redirect_targets() -> anyhow::Result<()> {
 fn main() -> anyhow::Result<()> {
     let now = Instant::now();
 
-    build_and_save_page_maps()?;
-    // build_and_save_redirect_targets()?;
+    // build_and_save_page_maps()?;
+    build_and_save_redirect_targets()?;
 
     // // let title_to_id: FxHashMap<String, u32> = util::load_from_file("data/title_to_id.bin")?;
     // let id_to_title: FxHashMap<u32, String> = util::load_from_file("data/id_to_title.bin")?;
