@@ -1,11 +1,10 @@
 use crate::redirect_parser;
+use rustc_hash::{FxBuildHasher, FxHashMap};
+use serde::{de::DeserializeOwned, Serialize};
 use std::{
-    collections::HashMap,
     fs::File,
     io::{self, BufReader, BufWriter, Write},
 };
-
-use serde::{de::DeserializeOwned, Serialize};
 
 pub fn unescape_sql_string(s: &str) -> String {
     let mut result = String::with_capacity(s.len());
@@ -53,10 +52,9 @@ pub fn load_from_file<T: DeserializeOwned>(path: &str) -> anyhow::Result<T> {
 
 // TODO!
 pub fn run_interactive_session(
-    title_to_id: &HashMap<String, u32>,
-    id_to_title: &HashMap<u32, String>,
-    redirect_hashmap: &HashMap<u32, u32>,
-    redirect_vec_map: &redirect_parser::RedirectVecMap,
+    title_to_id: &FxHashMap<String, u32>,
+    id_to_title: &FxHashMap<u32, String>,
+    redirect_targets: &FxHashMap<u32, u32>,
 ) -> anyhow::Result<()> {
     loop {
         print!("> ");
@@ -87,20 +85,11 @@ pub fn run_interactive_session(
             let id = input.strip_prefix("redirect ").unwrap().parse::<u32>();
             match id {
                 Ok(source_id) => {
-                    // Check hashmap
-                    let map_result = redirect_hashmap.get(&source_id);
+                    let map_result = redirect_targets.get(&source_id);
                     if let Some(target_id) = map_result {
-                        println!("[HashMap] Redirects to ID: {}", target_id);
+                        println!("Redirects to ID: {}", target_id);
                     } else {
-                        println!("[HashMap] ID {} is not a redirect.", source_id);
-                    }
-
-                    // Check vecmap
-                    let vec_result = redirect_vec_map.get(source_id);
-                    if let Some(target_id) = vec_result {
-                        println!("[VecMap]   Redirects to ID: {}", target_id);
-                    } else {
-                        println!("[VecMap]   ID {} is not a redirect.", source_id);
+                        println!("ID {} is not a redirect.", source_id);
                     }
                 }
                 Err(_) => {

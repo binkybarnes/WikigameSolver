@@ -1,14 +1,14 @@
 use flate2::read::GzDecoder;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::FxHashMap;
 use std::fs::File;
 use std::io::{BufReader, Read};
 
 #[derive(Serialize, Deserialize)]
 struct TitleIdMaps {
-    title_to_id: HashMap<String, u32>,
-    id_to_title: HashMap<u32, String>,
+    title_to_id: FxHashMap<String, u32>,
+    id_to_title: FxHashMap<u32, String>,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -19,8 +19,8 @@ fn main() -> anyhow::Result<()> {
     // (10 <- page_id,0 <- article namespace,'AccessibleComputing' <- page title, ... )
     let tuple_re = Regex::new(r"\((\d+),0,'([^']*)'").unwrap();
 
-    let mut title_to_id: HashMap<String, u32> = HashMap::new();
-    let mut id_to_title: HashMap<u32, String> = HashMap::new();
+    let mut title_to_id: FxHashMap<String, u32> = FxHashMap::new();
+    let mut id_to_title: FxHashMap<u32, String> = FxHashMap::new();
 
     let mut buffer = String::new();
     let mut chunk = [0u8; 1_048_576]; // 1MB buffer

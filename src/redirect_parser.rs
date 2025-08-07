@@ -2,15 +2,15 @@ use crate::util;
 use flate2::read::GzDecoder;
 use indicatif::{ProgressBar, ProgressStyle};
 use regex::Regex;
+use rustc_hash::{FxBuildHasher, FxHashMap};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::fs::File;
 use std::io::{self, BufReader, BufWriter, Read, Write};
 
 pub fn build_redirect_targets(
     path: &str,
-    title_to_id: &HashMap<String, u32>,
-) -> anyhow::Result<(RedirectVecMap, HashMap<u32, u32>)> {
+    title_to_id: &FxHashMap<String, u32>,
+) -> anyhow::Result<(FxHashMap<u32, u32>)> {
     let file = File::open(path)?;
     let metadata = file.metadata()?;
     let file_size = metadata.len();
@@ -45,9 +45,10 @@ pub fn build_redirect_targets(
         .progress_chars("=>-"),
     );
 
+    let hasher = FxBuildHasher::default();
     // max page id: 80605290, count: 11879716
-    let mut redirect_pairs: Vec<(u32, u32)> = Vec::with_capacity(estimated_matches); // 11 879 716
-    let mut redirect_hashmap: HashMap<u32, u32> = HashMap::with_capacity(estimated_matches);
+    let mut redirect_targets: FxHashMap<u32, u32> =
+        FxHashMap::with_capacity_and_hasher(estimated_matches, hasher);
 
     for cap in tuple_re.captures_iter(&decompressed) {
         let page_id: u32 = cap[1].parse()?;
@@ -58,39 +59,13 @@ pub fn build_redirect_targets(
 
         // skip non existent target_title, ex: Chubchik
         if let Some(&target_id) = title_to_id.get(&unescaped_title) {
-            redirect_pairs.push((page_id, target_id));
-            redirect_hashmap.insert(page_id, target_id);
+            redirect_targets.insert(page_id, target_id);
         }
 
-        // redirect_targets[page_id] = title_to_id.get(&unescaped_title).copied();
         pb_parse.inc(1);
     }
-    let redirect_vec_map = RedirectVecMap::new(redirect_pairs);
 
-    println!("Total redirects parsed: {}", redirect_vec_map.len());
+    println!("Total redirects parsed: {}", redirect_targets.len());
 
-    Ok((redirect_vec_map, redirect_hashmap))
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct RedirectVecMap {
-    redirects: Vec<(u32, u32)>,
-}
-
-impl RedirectVecMap {
-    pub fn new(mut pairs: Vec<(u32, u32)>) -> Self {
-        pairs.sort_unstable_by_key(|k| k.0);
-        RedirectVecMap { redirects: pairs }
-    }
-
-    pub fn get(&self, page_id: u32) -> Option<u32> {
-        self.redirects
-            .binary_search_by_key(&page_id, |(from, _to)| *from)
-            .ok()
-            .map(|index| self.redirects[index].1)
-    }
-
-    pub fn len(&self) -> usize {
-        self.redirects.len()
-    }
+    Ok(redirect_targets)
 }

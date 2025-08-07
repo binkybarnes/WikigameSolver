@@ -1,87 +1,56 @@
 mod page_parser;
+mod pagelinks_parser;
 mod redirect_parser;
 mod util;
+use rustc_hash::{FxBuildHasher, FxHashMap};
 use std::{
-    collections::HashMap,
     fs::File,
     io::{BufRead, BufReader},
     time::Instant,
 };
 
-fn load_page_ids(path: &str) -> std::io::Result<Vec<u32>> {
-    let file = File::open(path)?;
-    let reader = BufReader::new(file);
-    let mut ids = Vec::new();
-    for line in reader.lines() {
-        if let Ok(line) = line {
-            if let Ok(id) = line.trim().parse::<u32>() {
-                ids.push(id);
-            }
-        }
-    }
-    Ok(ids)
-}
-pub fn benchmark_redirects(
-    ids: &[u32],
-    redirect_hashmap: &HashMap<u32, u32>,
-    redirect_vec_map: &redirect_parser::RedirectVecMap,
-) {
-    // Benchmark HashMap
-    let start = Instant::now();
-    let mut count_hashmap = 0;
-    for &id in ids {
-        if redirect_hashmap.get(&id).is_some() {
-            count_hashmap += 1;
-        }
-    }
-    let hashmap_duration = start.elapsed();
-    println!(
-        "HashMap: Found {} redirects in {:?}",
-        count_hashmap, hashmap_duration
-    );
+pub fn build_and_save_page_maps() -> anyhow::Result<()> {
+    let (title_to_id, id_to_title): (FxHashMap<String, u32>, FxHashMap<u32, String>) =
+        page_parser::build_title_maps("../sql_files/enwiki-latest-page.sql.gz")?;
 
-    // Benchmark RedirectVecMap (binary search)
-    let start = Instant::now();
-    let mut count_vecmap = 0;
-    for &id in ids {
-        if redirect_vec_map.get(id).is_some() {
-            count_vecmap += 1;
-        }
-    }
-    let vecmap_duration = start.elapsed();
-    println!(
-        "RedirectVecMap: Found {} redirects in {:?}",
-        count_vecmap, vecmap_duration
-    );
+    util::save_to_file(&title_to_id, "data/title_to_id.bin")?;
+    util::save_to_file(&id_to_title, "data/id_to_title.bin")?;
+
+    Ok(())
+}
+
+pub fn build_and_save_redirect_targets() -> anyhow::Result<()> {
+    let title_to_id: FxHashMap<String, u32> = util::load_from_file("data/title_to_id.bin")?;
+
+    let redirect_targets = redirect_parser::build_redirect_targets(
+        "../sql_files/enwiki-latest-redirect.sql.gz",
+        &title_to_id,
+    )?;
+
+    util::save_to_file(&redirect_targets, "data/redirect_targets.bin")?;
+
+    Ok(())
 }
 
 fn main() -> anyhow::Result<()> {
     let now = Instant::now();
 
-    // let title_to_id: HashMap<String, u32> = util::load_from_file("data/title_to_id.bin")?;
-    // let (redirect_vec_map, redirect_hashmap) = redirect_parser::build_redirect_targets(
-    //     "../sql_files/enwiki-latest-redirect.sql.gz",
-    //     &title_to_id,
-    // )?;
+    build_and_save_page_maps()?;
+    // build_and_save_redirect_targets()?;
 
-    // util::save_to_file(&redirect_hashmap, "data/redirect_hashmap.bin")?;
-    // util::save_to_file(&redirect_vec_map, "data/redirect_vec_map.bin")?;
-    // let title_to_id: HashMap<String, u32> = util::load_from_file("data/title_to_id.bin")?;
-    // let id_to_title: HashMap<u32, String> = util::load_from_file("data/id_to_title.bin")?;
-    let redirect_hashmap: HashMap<u32, u32> = util::load_from_file("data/redirect_hashmap.bin")?;
-    let redirect_vec_map: redirect_parser::RedirectVecMap =
-        util::load_from_file("data/redirect_vec_map.bin")?;
+    // // let title_to_id: FxHashMap<String, u32> = util::load_from_file("data/title_to_id.bin")?;
+    // let id_to_title: FxHashMap<u32, String> = util::load_from_file("data/id_to_title.bin")?;
+    // let redirect_targets: FxHashMap<u32, u32> = util::load_from_file("data/redirect_targets.bin")?;
 
-    // util::run_interactive_session(
-    //     &title_to_id,
+    // let page_links: FxHashMap<u32, Vec<u32>> = pagelinks_parser::build_pagelinks(
+    //     // "../sql_files/enwiki-latest-pagelinks_copy.sql",
+    //     "../sql_files/enwiki-latest-pagelinks.sql.gz",
     //     &id_to_title,
-    //     &redirect_hashmap,
-    //     &redirect_vec_map,
+    //     &redirect_targets,
     // )?;
+    // util::save_to_file(&page_links, "data/page_links.bin")?;
 
-    let page_ids = load_page_ids("data/redirect_page_ids.txt")?;
-    println!("{}", page_ids.len());
-    benchmark_redirects(&page_ids, &redirect_hashmap, &redirect_vec_map);
+    // util::run_interactive_session(&title_to_id, &id_to_title, &redirect_targets)?;
 
     let elapsed = now.elapsed();
     println!("Elapsed: {:.2?}", elapsed);
