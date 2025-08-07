@@ -6,8 +6,23 @@ use rustc_hash::{FxBuildHasher, FxHashMap};
 use std::{
     fs::File,
     io::{BufRead, BufReader},
-    time::Instant,
+    process::id,
+    thread,
+    time::{Duration, Instant},
 };
+
+// todo:
+// see how much memory the pagelinks hashmap uses (use the rust memory cli tool?)
+// try out csr to see if its less memory (including the 2 id maps)
+// see which is faster for bfs, csr or hashmap adjacency list
+//   check if memory or cpu is bottleneck
+// check one direction bfs speed, then make a incoming links graph if memory permits, for bidirectional bfs
+// parallel bfs?
+
+// reordering for locality (for csr):
+//   for csr RCM (Reverse Cuthill-McKee), putting similar pages together
+//   or reordering with community detection (louvain, Label Propagation, Girvan–Newman, Infomap, etc)
+//   or graph partitioning (for parallel processing or community detection?) (METIS, KaHIP)
 
 pub fn build_and_save_page_maps() -> anyhow::Result<()> {
     let (title_to_id, id_to_title): (FxHashMap<String, u32>, FxHashMap<u32, String>) =
@@ -32,27 +47,38 @@ pub fn build_and_save_redirect_targets() -> anyhow::Result<()> {
     Ok(())
 }
 
+pub fn build_and_save_page_links() -> anyhow::Result<()> {
+    let id_to_title: FxHashMap<u32, String> = util::load_from_file("data/id_to_title.bin")?;
+    let redirect_targets: FxHashMap<u32, u32> = util::load_from_file("data/redirect_targets.bin")?;
+
+    let page_links = pagelinks_parser::build_pagelinks(
+        "../sql_files/enwiki-latest-pagelinks.sql.gz",
+        &id_to_title,
+        &redirect_targets,
+    )?;
+
+    util::save_to_file(&page_links, "data/page_links.bin")?;
+
+    Ok(())
+}
+
 fn main() -> anyhow::Result<()> {
     let now = Instant::now();
 
     // build_and_save_page_maps()?;
-    build_and_save_redirect_targets()?;
+    // build_and_save_redirect_targets()?;
+    build_and_save_page_links()?;
 
-    // // let title_to_id: FxHashMap<String, u32> = util::load_from_file("data/title_to_id.bin")?;
-    // let id_to_title: FxHashMap<u32, String> = util::load_from_file("data/id_to_title.bin")?;
-    // let redirect_targets: FxHashMap<u32, u32> = util::load_from_file("data/redirect_targets.bin")?;
-
-    // let page_links: FxHashMap<u32, Vec<u32>> = pagelinks_parser::build_pagelinks(
-    //     // "../sql_files/enwiki-latest-pagelinks_copy.sql",
-    //     "../sql_files/enwiki-latest-pagelinks.sql.gz",
-    //     &id_to_title,
-    //     &redirect_targets,
-    // )?;
-    // util::save_to_file(&page_links, "data/page_links.bin")?;
+    // let page_links: FxHashMap<u32, Vec<u32>> = util::load_from_file("data/page_links.bin")?;
 
     // util::run_interactive_session(&title_to_id, &id_to_title, &redirect_targets)?;
 
     let elapsed = now.elapsed();
+    // loop {
+    //     thread::sleep(Duration::from_secs(60));
+    // }
+
     println!("Elapsed: {:.2?}", elapsed);
+
     Ok(())
 }
