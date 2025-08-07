@@ -70,14 +70,14 @@ fn main() -> anyhow::Result<()> {
     build_and_save_page_links()?;
 
     // let page_links: FxHashMap<u32, Vec<u32>> = util::load_from_file("data/page_links.bin")?;
-
+    // println!("loaded");
     // util::run_interactive_session(&title_to_id, &id_to_title, &redirect_targets)?;
 
-    let elapsed = now.elapsed();
     // loop {
     //     thread::sleep(Duration::from_secs(60));
     // }
 
+    let elapsed = now.elapsed();
     println!("Elapsed: {:.2?}", elapsed);
 
     Ok(())

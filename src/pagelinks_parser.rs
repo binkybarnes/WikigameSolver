@@ -8,6 +8,24 @@ use serde::{Deserialize, Serialize}; // For the channel
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, BufWriter, Read, Write};
 
+pub struct CsrGraph {
+    pub offsets: Vec<usize>,
+    pub edges: Vec<u32>,
+    // page_ids are sparse, so map each page_id to 1, 2, ...
+    pub orig_to_dense: FxHashMap<u32, usize>,
+    pub dense_to_orig: Vec<u32>,
+}
+
+// pub fn build_csr_with_adjacency_list(adjacency_list: &FxHashMap<u32, Vec<u32>>) -> CsrGraph {
+//     // terminology: if apple -> banana, apple is the row title, banana is column
+//     let id_counter: usize = 0;
+//     for row_title in adjacency_list.keys() {
+//         orig_to_dense.insert(row_title, id_counter);
+//         dense_to_orig.insert(id_counter, row_title);
+//         id_counter += 1;
+//     }
+// }
+
 pub fn build_pagelinks(
     path: &str,
     id_to_title: &FxHashMap<u32, String>,
@@ -45,12 +63,28 @@ pub fn build_pagelinks(
 
     let mut line_buf = Vec::new();
 
+    let mut skip_count_ns = 0;
+    let mut skip_count_nf = 0;
     while decompressed_reader.read_until(b'\n', &mut line_buf)? != 0 {
-        parse_line_bytes(&line_buf, &redirect_targets, &id_to_title, &mut page_links);
+        parse_line_bytes(
+            &line_buf,
+            &redirect_targets,
+            &id_to_title,
+            &mut page_links,
+            &mut skip_count_ns,
+            &mut skip_count_nf,
+        );
         line_buf.clear();
     }
 
-    println!("Total links parsed: {}", page_links.len());
+    // should be
+    // page_links map length: 14267418
+    // skipped ns: 789014935, skipped not found: 510806857
+    println!("page_links map length: {}", page_links.len());
+    println!(
+        "skipped ns: {}, skipped not found: {}",
+        skip_count_ns, skip_count_nf
+    );
     Ok(page_links)
 }
 
@@ -61,6 +95,8 @@ fn parse_line_bytes(
     redirect_targets: &FxHashMap<u32, u32>,
     id_to_title: &FxHashMap<u32, String>,
     page_links: &mut FxHashMap<u32, Vec<u32>>,
+    skip_count_ns: &mut usize,
+    skip_count_nf: &mut usize,
 ) {
     const PREFIX: &[u8] = b"INSERT INTO `pagelinks` VALUES (";
 
@@ -70,6 +106,10 @@ fn parse_line_bytes(
 
     let mut i = PREFIX.len(); // start after the prefix
     let len = line_buf.len();
+
+    let mut last_page_id_to: Option<u32> = None;
+    let mut last_is_valid: bool = false;
+    let mut last_redirect_target: u32 = std::u32::MAX;
 
     while i < len {
         if line_buf[i] != b'(' {
@@ -101,6 +141,7 @@ fn parse_line_bytes(
         }
         let field2 = &line_buf[start..i];
         if field2 != b"0" {
+            *skip_count_ns += 1;
             // skip this tuple
             while i < len && line_buf[i] != b')' {
                 i += 1;
@@ -127,13 +168,30 @@ fn parse_line_bytes(
             )
         });
 
-        // -------- Resolve redirect --------
-        if let Some(&redirect_target) = redirect_targets.get(&page_id_to) {
-            page_id_to = redirect_target;
-        }
-
-        if id_to_title.contains_key(&page_id_to) {
-            page_links.entry(page_id_from).or_default().push(page_id_to);
+        // dont even check if already checked (cause the data is sorted by page_id_to)
+        // same as previous
+        if Some(page_id_to) == last_page_id_to {
+            if !last_is_valid {
+                *skip_count_nf += 1;
+            } else {
+                page_links
+                    .entry(page_id_from)
+                    .or_default()
+                    .push(last_redirect_target);
+            }
+        } else {
+            last_page_id_to = Some(page_id_to);
+            if let Some(&redirect_target) = redirect_targets.get(&page_id_to) {
+                page_id_to = redirect_target;
+            }
+            last_redirect_target = page_id_to;
+            if id_to_title.contains_key(&page_id_to) {
+                last_is_valid = true;
+                page_links.entry(page_id_from).or_default().push(page_id_to);
+            } else {
+                last_is_valid = false;
+                *skip_count_nf += 1;
+            }
         }
 
         i += 1; // skip ')'
