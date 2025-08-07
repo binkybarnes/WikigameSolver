@@ -1,3 +1,4 @@
+use crate::pagelinks_parser;
 use crate::redirect_parser;
 use rustc_hash::{FxBuildHasher, FxHashMap};
 use serde::{de::DeserializeOwned, Serialize};
@@ -55,6 +56,9 @@ pub fn run_interactive_session(
     title_to_id: &FxHashMap<String, u32>,
     id_to_title: &FxHashMap<u32, String>,
     redirect_targets: &FxHashMap<u32, u32>,
+    linktargets: &FxHashMap<u32, u32>,
+    pagelinks_adjacency_list: &FxHashMap<u32, Vec<u32>>,
+    pagelinks_csr: &pagelinks_parser::CsrGraph,
 ) -> anyhow::Result<()> {
     loop {
         print!("> ");
@@ -96,8 +100,55 @@ pub fn run_interactive_session(
                     println!("Invalid ID.");
                 }
             }
+        } else if input.starts_with("linktarget ") {
+            let id = input.strip_prefix("linktarget ").unwrap().parse::<u32>();
+            match id {
+                Ok(linktarget_id) => {
+                    if let Some(target_id) = linktargets.get(&linktarget_id) {
+                        println!("linktarget_id {} -> target_id {}", linktarget_id, target_id);
+                    } else {
+                        println!("linktarget_id {} not found", linktarget_id);
+                    }
+                }
+                Err(_) => println!("Invalid linktarget_id."),
+            }
+        } else if input.starts_with("links ") {
+            let page_id_res = input.strip_prefix("links ").unwrap().parse::<u32>();
+            match page_id_res {
+                Ok(page_id) => {
+                    // Print neighbors from hashmap adjacency list
+                    match pagelinks_adjacency_list.get(&page_id) {
+                        Some(neighbors) => {
+                            println!("HashMap neighbors ({}): {:?}", neighbors.len(), neighbors);
+                        }
+                        None => {
+                            println!("No neighbors found in HashMap for page ID {}", page_id);
+                        }
+                    }
+
+                    // Print neighbors from CSR graph if provided
+
+                    if let Some(&dense_idx) = pagelinks_csr.orig_to_dense.get(&page_id) {
+                        let dense_neighbors = pagelinks_csr.get(dense_idx);
+                        let orig_neighbors: Vec<u32> = dense_neighbors
+                            .iter()
+                            .map(|&dense_n| pagelinks_csr.dense_to_orig[dense_n as usize])
+                            .collect();
+                        println!(
+                            "CSR neighbors ({}): {:?}",
+                            orig_neighbors.len(),
+                            orig_neighbors
+                        );
+                    } else {
+                        println!("Page ID {} not found in CSR graph", page_id);
+                    }
+                }
+                Err(_) => {
+                    println!("Invalid page ID.");
+                }
+            }
         } else {
-            println!("Unknown command. Try: lookup <title>, reverse <id>, redirect <id>, exit");
+            println!("Unknown command. Try: lookup <title>, reverse <id>, redirect <id>, links <page_id>, exit");
         }
     }
 

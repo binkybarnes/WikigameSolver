@@ -1,4 +1,5 @@
 use crate::util;
+use bincode::deserialize_from_custom;
 use flate2::read::GzDecoder;
 use indicatif::{ProgressBar, ProgressStyle};
 use regex::Regex;
@@ -8,6 +9,7 @@ use serde::{Deserialize, Serialize}; // For the channel
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, BufWriter, Read, Write};
 
+#[derive(Serialize, Deserialize)]
 pub struct CsrGraph {
     pub offsets: Vec<usize>,
     pub edges: Vec<u32>,
@@ -15,22 +17,62 @@ pub struct CsrGraph {
     pub orig_to_dense: FxHashMap<u32, usize>,
     pub dense_to_orig: Vec<u32>,
 }
+impl CsrGraph {
+    pub fn get(&self, dense_node: usize) -> &[u32] {
+        let start = self.offsets[dense_node];
+        let end = self.offsets[dense_node + 1];
+        &self.edges[start..end]
+    }
 
-// pub fn build_csr_with_adjacency_list(adjacency_list: &FxHashMap<u32, Vec<u32>>) -> CsrGraph {
-//     // terminology: if apple -> banana, apple is the row title, banana is column
-//     let id_counter: usize = 0;
-//     for row_title in adjacency_list.keys() {
-//         orig_to_dense.insert(row_title, id_counter);
-//         dense_to_orig.insert(id_counter, row_title);
-//         id_counter += 1;
-//     }
-// }
+    pub fn get_by_orig(&self, orig_id: u32) -> Option<&[u32]> {
+        self.orig_to_dense
+            .get(&orig_id)
+            .map(|&dense_idx| self.get(dense_idx))
+    }
+}
+pub fn build_csr_with_adjacency_list(adjacency_list: &FxHashMap<u32, Vec<u32>>) -> CsrGraph {
+    // terminology: if apple -> banana, apple is the row title, banana is column
+    let hasher = FxBuildHasher::default();
+    let num_nodes = adjacency_list.len();
+
+    let mut orig_to_dense: FxHashMap<u32, usize> =
+        FxHashMap::with_capacity_and_hasher(num_nodes, hasher);
+    let mut dense_to_orig: Vec<u32> = Vec::with_capacity(num_nodes);
+
+    for (i, row_title) in adjacency_list.keys().enumerate() {
+        orig_to_dense.insert(*row_title, i);
+        dense_to_orig.push(*row_title);
+    }
+
+    let mut offsets = Vec::with_capacity(num_nodes + 1);
+    let mut edges = Vec::new();
+    offsets.push(0);
+
+    for row_title in &dense_to_orig {
+        let neighbors = adjacency_list.get(row_title).unwrap();
+        let mut dense_neighbors: Vec<u32> = neighbors
+            .iter()
+            .filter_map(|to| orig_to_dense.get(to).map(|v| *v as u32))
+            .collect();
+        dense_neighbors.sort_unstable(); // for locality?
+
+        edges.extend(dense_neighbors);
+        offsets.push(edges.len());
+    }
+
+    CsrGraph {
+        offsets,
+        edges,
+        orig_to_dense,
+        dense_to_orig,
+    }
+}
 
 pub fn build_pagelinks(
     path: &str,
     id_to_title: &FxHashMap<u32, String>,
     redirect_targets: &FxHashMap<u32, u32>,
-) -> anyhow::Result<(FxHashMap<u32, Vec<u32>>)> {
+) -> anyhow::Result<(FxHashMap<u32, Vec<u32>>, CsrGraph)> {
     let file = File::open(path)?;
     let metadata = file.metadata()?;
     let file_size = metadata.len();
@@ -55,7 +97,7 @@ pub fn build_pagelinks(
     let estimated_entries = 19_000_000; // 18 570 593 number of pages?
                                         // 1 598 445 028 edges?
     let hasher = FxBuildHasher::default();
-    let mut page_links: FxHashMap<u32, Vec<u32>> =
+    let mut pagelinks_adjacency_list: FxHashMap<u32, Vec<u32>> =
         FxHashMap::with_capacity_and_hasher(estimated_entries, hasher);
 
     // regex too slow (10 mins, this is 1 min)
@@ -70,7 +112,7 @@ pub fn build_pagelinks(
             &line_buf,
             &redirect_targets,
             &id_to_title,
-            &mut page_links,
+            &mut pagelinks_adjacency_list,
             &mut skip_count_ns,
             &mut skip_count_nf,
         );
@@ -80,12 +122,15 @@ pub fn build_pagelinks(
     // should be
     // page_links map length: 14267418
     // skipped ns: 789014935, skipped not found: 510806857
-    println!("page_links map length: {}", page_links.len());
+    println!("page_links map length: {}", pagelinks_adjacency_list.len());
     println!(
         "skipped ns: {}, skipped not found: {}",
         skip_count_ns, skip_count_nf
     );
-    Ok(page_links)
+
+    println!("building csr");
+    let pagelinks_csr: CsrGraph = build_csr_with_adjacency_list(&pagelinks_adjacency_list);
+    Ok((pagelinks_adjacency_list, pagelinks_csr))
 }
 
 // example data
@@ -106,10 +151,6 @@ fn parse_line_bytes(
 
     let mut i = PREFIX.len(); // start after the prefix
     let len = line_buf.len();
-
-    let mut last_page_id_to: Option<u32> = None;
-    let mut last_is_valid: bool = false;
-    let mut last_redirect_target: u32 = std::u32::MAX;
 
     while i < len {
         if line_buf[i] != b'(' {
@@ -168,30 +209,15 @@ fn parse_line_bytes(
             )
         });
 
-        // dont even check if already checked (cause the data is sorted by page_id_to)
-        // same as previous
-        if Some(page_id_to) == last_page_id_to {
-            if !last_is_valid {
-                *skip_count_nf += 1;
-            } else {
-                page_links
-                    .entry(page_id_from)
-                    .or_default()
-                    .push(last_redirect_target);
-            }
+        // -------- Resolve redirect --------
+        if let Some(&redirect_target) = redirect_targets.get(&page_id_to) {
+            page_id_to = redirect_target;
+        }
+
+        if id_to_title.contains_key(&page_id_to) {
+            page_links.entry(page_id_from).or_default().push(page_id_to);
         } else {
-            last_page_id_to = Some(page_id_to);
-            if let Some(&redirect_target) = redirect_targets.get(&page_id_to) {
-                page_id_to = redirect_target;
-            }
-            last_redirect_target = page_id_to;
-            if id_to_title.contains_key(&page_id_to) {
-                last_is_valid = true;
-                page_links.entry(page_id_from).or_default().push(page_id_to);
-            } else {
-                last_is_valid = false;
-                *skip_count_nf += 1;
-            }
+            *skip_count_nf += 1;
         }
 
         i += 1; // skip ')'
@@ -202,8 +228,9 @@ fn parse_line_bytes(
 }
 // 280s
 // flate2 zlib-rs 250s
-// byte parser ugly 137-140s
+// byte parser ugly 132-140s
 // byte parser with memchar 147-149s
+// byte parser ugly with skip checking ~135s
 
 // fn parse_line_bytes(
 //     line_buf: &[u8],
