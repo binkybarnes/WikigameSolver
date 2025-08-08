@@ -70,7 +70,7 @@ pub fn build_csr_with_adjacency_list(adjacency_list: &FxHashMap<u32, Vec<u32>>) 
 
 pub fn build_pagelinks(
     path: &str,
-    id_to_title: &FxHashMap<u32, String>,
+    linktargets: &FxHashMap<u32, u32>,
     redirect_targets: &FxHashMap<u32, u32>,
 ) -> anyhow::Result<(FxHashMap<u32, Vec<u32>>, CsrGraph)> {
     let file = File::open(path)?;
@@ -106,15 +106,13 @@ pub fn build_pagelinks(
     let mut line_buf = Vec::new();
 
     let mut skip_count_ns = 0;
-    let mut skip_count_nf = 0;
     while decompressed_reader.read_until(b'\n', &mut line_buf)? != 0 {
         parse_line_bytes(
             &line_buf,
             &redirect_targets,
-            &id_to_title,
+            &linktargets,
             &mut pagelinks_adjacency_list,
             &mut skip_count_ns,
-            &mut skip_count_nf,
         );
         line_buf.clear();
     }
@@ -123,10 +121,7 @@ pub fn build_pagelinks(
     // page_links map length: 14267418
     // skipped ns: 789014935, skipped not found: 510806857
     println!("page_links map length: {}", pagelinks_adjacency_list.len());
-    println!(
-        "skipped ns: {}, skipped not found: {}",
-        skip_count_ns, skip_count_nf
-    );
+    println!("skipped ns: {}", skip_count_ns);
 
     println!("building csr");
     let pagelinks_csr: CsrGraph = build_csr_with_adjacency_list(&pagelinks_adjacency_list);
@@ -138,10 +133,9 @@ pub fn build_pagelinks(
 fn parse_line_bytes(
     line_buf: &[u8],
     redirect_targets: &FxHashMap<u32, u32>,
-    id_to_title: &FxHashMap<u32, String>,
+    linktargets: &FxHashMap<u32, u32>,
     page_links: &mut FxHashMap<u32, Vec<u32>>,
     skip_count_ns: &mut usize,
-    skip_count_nf: &mut usize,
 ) {
     const PREFIX: &[u8] = b"INSERT INTO `pagelinks` VALUES (";
 
@@ -202,22 +196,22 @@ fn parse_line_bytes(
             i += 1;
         }
         let field3 = &line_buf[start..i];
-        let mut page_id_to = atoi::atoi::<u32>(field3).unwrap_or_else(|| {
+        let page_id_to = atoi::atoi::<u32>(field3).unwrap_or_else(|| {
             panic!(
                 "Invalid page_id_to: {:?}",
                 std::str::from_utf8(field3).unwrap_or("<invalid>")
             )
         });
 
-        // -------- Resolve redirect --------
-        if let Some(&redirect_target) = redirect_targets.get(&page_id_to) {
-            page_id_to = redirect_target;
-        }
-
-        if id_to_title.contains_key(&page_id_to) {
-            page_links.entry(page_id_from).or_default().push(page_id_to);
-        } else {
-            *skip_count_nf += 1;
+        if let Some(mut mapped_target) = linktargets.get(&page_id_to) {
+            // -------- Resolve redirect --------
+            if let Some(redirect_target) = redirect_targets.get(mapped_target) {
+                mapped_target = redirect_target;
+            }
+            page_links
+                .entry(page_id_from)
+                .or_default()
+                .push(*mapped_target);
         }
 
         i += 1; // skip ')'

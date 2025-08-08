@@ -61,7 +61,7 @@ pub fn build_and_save_linktargets() -> anyhow::Result<()> {
 }
 
 pub fn build_and_save_page_links() -> anyhow::Result<()> {
-    let id_to_title: FxHashMap<u32, String> = util::load_from_file("data/id_to_title.bin")?;
+    let linktargets: FxHashMap<u32, u32> = util::load_from_file("data/linktargets.bin")?;
     let redirect_targets: FxHashMap<u32, u32> = util::load_from_file("data/redirect_targets.bin")?;
 
     let (pagelinks_adjacency_list, pagelinks_csr): (
@@ -69,7 +69,7 @@ pub fn build_and_save_page_links() -> anyhow::Result<()> {
         pagelinks_parser::CsrGraph,
     ) = pagelinks_parser::build_pagelinks(
         "../sql_files/enwiki-latest-pagelinks.sql.gz",
-        &id_to_title,
+        &linktargets,
         &redirect_targets,
     )?;
 
@@ -90,23 +90,23 @@ fn main() -> anyhow::Result<()> {
     // build_and_save_linktargets()?;
     // build_and_save_page_links()?;
 
-    // let id_to_title: FxHashMap<u32, String> = util::load_from_file("data/id_to_title.bin")?;
-    // let title_to_id: FxHashMap<String, u32> = util::load_from_file("data/title_to_id.bin")?;
-    // let redirect_targets: FxHashMap<u32, u32> = util::load_from_file("data/redirect_targets.bin")?;
-    // let linktargets: FxHashMap<u32, u32> = util::load_from_file("data/linktargets.bin")?;
-    // let pagelinks_adjacency_list: FxHashMap<u32, Vec<u32>> =
-    //     util::load_from_file("data/pagelinks_adjacency_list.bin")?;
-    // let pagelinks_csr: pagelinks_parser::CsrGraph = util::load_from_file("data/pagelinks_csr.bin")?;
+    let id_to_title: FxHashMap<u32, String> = util::load_from_file("data/id_to_title.bin")?;
+    let title_to_id: FxHashMap<String, u32> = util::load_from_file("data/title_to_id.bin")?;
+    let redirect_targets: FxHashMap<u32, u32> = util::load_from_file("data/redirect_targets.bin")?;
+    let linktargets: FxHashMap<u32, u32> = util::load_from_file("data/linktargets.bin")?;
+    let pagelinks_adjacency_list: FxHashMap<u32, Vec<u32>> =
+        util::load_from_file("data/pagelinks_adjacency_list.bin")?;
+    let pagelinks_csr: pagelinks_parser::CsrGraph = util::load_from_file("data/pagelinks_csr.bin")?;
 
-    // println!("loaded");
-    // util::run_interactive_session(
-    //     &title_to_id,
-    //     &id_to_title,
-    //     &redirect_targets,
-    //     &linktargets,
-    //     &pagelinks_adjacency_list,
-    //     Some(&pagelinks_csr),
-    // )?;
+    println!("loaded");
+    util::run_interactive_session(
+        &title_to_id,
+        &id_to_title,
+        &redirect_targets,
+        &linktargets,
+        &pagelinks_adjacency_list,
+        &pagelinks_csr,
+    )?;
 
     // loop {
     //     thread::sleep(Duration::from_secs(60));

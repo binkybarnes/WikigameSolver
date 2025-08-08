@@ -148,7 +148,7 @@ pub fn run_interactive_session(
                 }
             }
         } else {
-            println!("Unknown command. Try: lookup <title>, reverse <id>, redirect <id>, links <page_id>, exit");
+            println!("Unknown command. Try: lookup <title>, reverse <id>, redirect <id>, linktargets <linktarget id>, links <page_id>, exit");
         }
     }
 
