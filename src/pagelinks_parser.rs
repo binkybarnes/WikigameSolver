@@ -203,11 +203,14 @@ fn parse_line_bytes(
             )
         });
 
-        if let Some(mut mapped_target) = linktargets.get(&page_id_to) {
+        if let Some(mapped_target) = linktargets.get(&page_id_to) {
             // -------- Resolve redirect --------
-            if let Some(redirect_target) = redirect_targets.get(mapped_target) {
-                mapped_target = redirect_target;
-            }
+            // im going to allow redirects in the adjacency list for 2 reasons:
+            // 1. when i find a path, i want to know if a page is a redirect, and i can resolve while visiting the node during search
+            // 2.
+            // if let Some(redirect_target) = redirect_targets.get(mapped_target) {
+            //     mapped_target = redirect_target;
+            // }
             page_links
                 .entry(page_id_from)
                 .or_default()
@@ -220,11 +223,16 @@ fn parse_line_bytes(
         }
     }
 }
+
+// nvm bruh this was without using linktargets, when i thought page_id_to was from the page tables
 // 280s
 // flate2 zlib-rs 250s
 // byte parser ugly 132-140s
 // byte parser with memchar 147-149s
 // byte parser ugly with skip checking ~135s
+
+// after using linktargets (correct)
+// byte parser ugly 230s
 
 // fn parse_line_bytes(
 //     line_buf: &[u8],
