@@ -74,7 +74,6 @@ pub fn build_csr_with_adjacency_list(adjacency_list: &FxHashMap<u32, Vec<u32>>) 
 pub fn build_pagelinks(
     path: &str,
     linktargets: &FxHashMap<u32, u32>,
-    redirect_targets: &FxHashMap<u32, u32>,
 ) -> anyhow::Result<(FxHashMap<u32, Vec<u32>>, CsrGraph)> {
     let file = File::open(path)?;
     let metadata = file.metadata()?;
@@ -112,7 +111,6 @@ pub fn build_pagelinks(
     while decompressed_reader.read_until(b'\n', &mut line_buf)? != 0 {
         parse_line_bytes(
             &line_buf,
-            &redirect_targets,
             &linktargets,
             &mut pagelinks_adjacency_list,
             &mut skip_count_ns,
@@ -135,7 +133,6 @@ pub fn build_pagelinks(
 // INSERT INTO `pagelinks` VALUES (1939,0,2),(3040,0,2),
 fn parse_line_bytes(
     line_buf: &[u8],
-    redirect_targets: &FxHashMap<u32, u32>,
     linktargets: &FxHashMap<u32, u32>,
     page_links: &mut FxHashMap<u32, Vec<u32>>,
     skip_count_ns: &mut usize,
