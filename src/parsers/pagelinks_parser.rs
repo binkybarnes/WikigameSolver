@@ -11,16 +11,18 @@ use std::io::{self, BufRead, BufReader, BufWriter, Read, Write};
 
 #[derive(Serialize, Deserialize)]
 pub struct CsrGraph {
-    pub offsets: Vec<usize>,
+    pub offsets: Vec<u32>,
     pub edges: Vec<u32>,
     // page_ids are sparse, so map each page_id to 1, 2, ...
-    pub orig_to_dense: FxHashMap<u32, usize>,
+    pub orig_to_dense: FxHashMap<u32, u32>,
     pub dense_to_orig: Vec<u32>,
+    // used in bfs_csr
+    pub redirect_targets_dense: Vec<u32>,
 }
 impl CsrGraph {
-    pub fn get(&self, dense_node: usize) -> &[u32] {
-        let start = self.offsets[dense_node];
-        let end = self.offsets[dense_node + 1];
+    pub fn get(&self, dense_node: u32) -> &[u32] {
+        let start = self.offsets[dense_node as usize] as usize;
+        let end = self.offsets[dense_node as usize + 1] as usize;
         &self.edges[start..end]
     }
 
@@ -29,18 +31,36 @@ impl CsrGraph {
             .get(&orig_id)
             .map(|&dense_idx| self.get(dense_idx))
     }
+
+    // if the given page is a redirect return its target, else return the same
+    pub fn resolve_redirect(&self, dense_node: u32) -> Option<u32> {
+        let redirect = self.redirect_targets_dense[dense_node as usize];
+        if redirect != u32::MAX {
+            // the empty value for redirect_targets_dense
+            Some(redirect)
+        } else {
+            None
+        }
+    }
 }
-pub fn build_csr_with_adjacency_list(adjacency_list: &FxHashMap<u32, Vec<u32>>) -> CsrGraph {
+
+// since some pages don't have links, those ids won't be in the adjacency list
+// so need to base it off of id_to_title which has ids of all pages
+pub fn build_csr_with_adjacency_list(
+    id_to_title: &FxHashMap<u32, String>,
+    adjacency_list: &FxHashMap<u32, Vec<u32>>,
+    redirect_targets: &FxHashMap<u32, u32>,
+) -> CsrGraph {
     // terminology: if apple -> banana, apple is the row title, banana is column
     let hasher = FxBuildHasher::default();
-    let num_nodes = adjacency_list.len();
+    let num_nodes = id_to_title.len();
 
-    let mut orig_to_dense: FxHashMap<u32, usize> =
+    let mut orig_to_dense: FxHashMap<u32, u32> =
         FxHashMap::with_capacity_and_hasher(num_nodes, hasher);
     let mut dense_to_orig: Vec<u32> = Vec::with_capacity(num_nodes);
 
-    for (i, row_title) in adjacency_list.keys().enumerate() {
-        orig_to_dense.insert(*row_title, i);
+    for (i, row_title) in id_to_title.keys().enumerate() {
+        orig_to_dense.insert(*row_title, i as u32);
         dense_to_orig.push(*row_title);
     }
 
@@ -49,22 +69,41 @@ pub fn build_csr_with_adjacency_list(adjacency_list: &FxHashMap<u32, Vec<u32>>) 
     offsets.push(0);
 
     for row_title in &dense_to_orig {
-        let neighbors = adjacency_list.get(row_title).unwrap();
-        let mut dense_neighbors: Vec<u32> = neighbors
-            .iter()
-            .filter_map(|to| orig_to_dense.get(to).map(|v| *v as u32))
-            .collect();
-        dense_neighbors.sort_unstable(); // for locality?
-
-        edges.extend(dense_neighbors);
-        offsets.push(edges.len());
+        if let Some(neighbors) = adjacency_list.get(row_title) {
+            let mut dense_neighbors: Vec<u32> = neighbors
+                .iter()
+                .filter_map(|to| orig_to_dense.get(to).copied())
+                .collect();
+            dense_neighbors.sort_unstable(); // for locality?
+            edges.extend(dense_neighbors);
+        }
+        offsets.push(edges.len() as u32);
     }
 
+    // translate redirect targets
+    let mut skip_count = 0;
+    let mut redirect_targets_dense: Vec<u32> = vec![u32::MAX; orig_to_dense.len()];
+    for (rd_from, rd_to) in redirect_targets {
+        if let (Some(&dense_from), Some(&dense_to)) =
+            (orig_to_dense.get(rd_from), orig_to_dense.get(rd_to))
+        {
+            redirect_targets_dense[dense_from as usize] = dense_to;
+        } else {
+            skip_count += 1;
+        }
+    }
+    println!("skipped {}", skip_count);
+    println!(
+        "redirect target dense len: {}, redirect targets len: {}",
+        redirect_targets_dense.len(),
+        redirect_targets.len()
+    );
     CsrGraph {
         offsets,
         edges,
         orig_to_dense,
         dense_to_orig,
+        redirect_targets_dense,
     }
 }
 
@@ -74,7 +113,7 @@ pub fn build_csr_with_adjacency_list(adjacency_list: &FxHashMap<u32, Vec<u32>>) 
 pub fn build_pagelinks(
     path: &str,
     linktargets: &FxHashMap<u32, u32>,
-) -> anyhow::Result<(FxHashMap<u32, Vec<u32>>, CsrGraph)> {
+) -> anyhow::Result<FxHashMap<u32, Vec<u32>>> {
     let file = File::open(path)?;
     let metadata = file.metadata()?;
     let file_size = metadata.len();
@@ -102,7 +141,7 @@ pub fn build_pagelinks(
     let mut pagelinks_adjacency_list: FxHashMap<u32, Vec<u32>> =
         FxHashMap::with_capacity_and_hasher(estimated_entries, hasher);
 
-    // regex too slow (10 mins, this is 1 min)
+    // regex too slow (10 mins, this is 4 min)
     // const PREFIX: &str = "INSERT INTO `pagelinks` VALUES (";
 
     let mut line_buf = Vec::new();
@@ -118,15 +157,10 @@ pub fn build_pagelinks(
         line_buf.clear();
     }
 
-    // should be
-    // page_links map length: 14267418
-    // skipped ns: 789014935, skipped not found: 510806857
     println!("page_links map length: {}", pagelinks_adjacency_list.len());
     println!("skipped ns: {}", skip_count_ns);
 
-    println!("building csr");
-    let pagelinks_csr: CsrGraph = build_csr_with_adjacency_list(&pagelinks_adjacency_list);
-    Ok((pagelinks_adjacency_list, pagelinks_csr))
+    Ok(pagelinks_adjacency_list)
 }
 
 // example data

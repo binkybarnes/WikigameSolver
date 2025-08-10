@@ -66,15 +66,19 @@ pub fn build_and_save_linktargets() -> anyhow::Result<()> {
 
 pub fn build_and_save_page_links() -> anyhow::Result<()> {
     let linktargets: FxHashMap<u32, u32> = util::load_from_file("data/linktargets.bin")?;
-    let redirect_targets: FxHashMap<u32, u32> = util::load_from_file("data/redirect_targets.bin")?;
-
-    let (pagelinks_adjacency_list, pagelinks_csr): (
-        FxHashMap<u32, Vec<u32>>,
-        pagelinks_parser::CsrGraph,
-    ) = pagelinks_parser::build_pagelinks(
+    let pagelinks_adjacency_list: FxHashMap<u32, Vec<u32>> = pagelinks_parser::build_pagelinks(
         "../sql_files/enwiki-latest-pagelinks.sql.gz",
         &linktargets,
     )?;
+
+    println!("building csr");
+    let redirect_targets: FxHashMap<u32, u32> = util::load_from_file("data/redirect_targets.bin")?;
+    let id_to_title: FxHashMap<u32, String> = util::load_from_file("data/id_to_title.bin")?;
+    let pagelinks_csr: pagelinks_parser::CsrGraph = pagelinks_parser::build_csr_with_adjacency_list(
+        &id_to_title,
+        &pagelinks_adjacency_list,
+        &redirect_targets,
+    );
 
     util::save_to_file(
         &pagelinks_adjacency_list,
@@ -102,14 +106,27 @@ fn main() -> anyhow::Result<()> {
     let pagelinks_csr: pagelinks_parser::CsrGraph = util::load_from_file("data/pagelinks_csr.bin")?;
 
     println!("loaded");
-    util::run_interactive_session(
+    println!(
+        "id_to_title len: {} redirect_targets len: {}",
+        id_to_title.len(),
+        redirect_targets.len()
+    );
+    // util::run_interactive_session(
+    //     &title_to_id,
+    //     &id_to_title,
+    //     &redirect_targets,
+    //     &linktargets,
+    //     &pagelinks_adjacency_list,
+    //     &pagelinks_csr,
+    // )?;
+
+    search::bfs_interactive_session(
         &title_to_id,
         &id_to_title,
-        &redirect_targets,
-        &linktargets,
         &pagelinks_adjacency_list,
         &pagelinks_csr,
-    )?;
+        &redirect_targets,
+    );
 
     // loop {
     //     thread::sleep(Duration::from_secs(60));

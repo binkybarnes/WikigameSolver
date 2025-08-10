@@ -51,6 +51,7 @@ pub fn build_redirect_targets(
                 let unescaped_title = util::unescape_sql_string(&redirect_target_title);
 
                 // skip non existent target_title, ex: Chubchik
+                // maybe also skip non existent rd_from
                 if let Some(&target_id) = title_to_id.get(&unescaped_title) {
                     redirect_targets.insert(page_id, target_id);
                 }
