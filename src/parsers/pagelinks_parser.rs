@@ -1,15 +1,14 @@
 use crate::util;
-use bincode::deserialize_from_custom;
+use bitcode::{Decode, Encode};
 use flate2::read::GzDecoder;
 use indicatif::{ProgressBar, ProgressStyle};
 use regex::Regex;
 use rustc_hash::{FxBuildHasher, FxHashMap};
-use serde::{Deserialize, Serialize}; // For the channel
 
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, BufWriter, Read, Write};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Encode, Decode)]
 pub struct CsrGraph {
     pub offsets: Vec<u32>,
     pub edges: Vec<u32>,

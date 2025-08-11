@@ -244,8 +244,8 @@ pub fn reconstruct_path_csr(
 pub fn bfs_interactive_session(
     title_to_id: &FxHashMap<String, u32>,
     id_to_title: &FxHashMap<u32, String>,
-    adj_graph: &FxHashMap<u32, Vec<u32>>,
     csr_graph: &pagelinks_parser::CsrGraph,
+    adj_graph: &FxHashMap<u32, Vec<u32>>,
     redirect_targets: &FxHashMap<u32, u32>,
 ) {
     let stdin = io::stdin();

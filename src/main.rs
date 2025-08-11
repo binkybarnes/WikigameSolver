@@ -106,11 +106,11 @@ fn main() -> anyhow::Result<()> {
     let pagelinks_csr: pagelinks_parser::CsrGraph = util::load_from_file("data/pagelinks_csr.bin")?;
 
     println!("loaded");
-    println!(
-        "id_to_title len: {} redirect_targets len: {}",
-        id_to_title.len(),
-        redirect_targets.len()
-    );
+    // println!(
+    //     "id_to_title len: {} redirect_targets len: {}",
+    //     id_to_title.len(),
+    //     redirect_targets.len()
+    // );
     // util::run_interactive_session(
     //     &title_to_id,
     //     &id_to_title,
@@ -123,8 +123,8 @@ fn main() -> anyhow::Result<()> {
     search::bfs_interactive_session(
         &title_to_id,
         &id_to_title,
-        &pagelinks_adjacency_list,
         &pagelinks_csr,
+        &pagelinks_adjacency_list,
         &redirect_targets,
     );
 

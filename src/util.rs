@@ -1,8 +1,11 @@
 use crate::pagelinks_parser;
 use crate::redirect_parser;
 use crate::search;
+use bitcode::Decode;
+use bitcode::Encode;
 use rustc_hash::{FxBuildHasher, FxHashMap};
 use serde::{de::DeserializeOwned, Serialize};
+use std::io::Read;
 use std::{
     fs::File,
     io::{self, BufReader, BufWriter, Write},
@@ -36,22 +39,48 @@ pub fn unescape_sql_string(s: &str) -> String {
     result
 }
 
-pub fn save_to_file<T: Serialize>(data: &T, path: &str) -> anyhow::Result<()> {
-    println!("Serializing and saving to file");
+pub fn save_to_file<T: Encode>(data: &T, path: &str) -> anyhow::Result<()> {
+    println!("Encoding and saving to file");
+    let encoded = bitcode::encode(data); // Encode into Vec<u8>
+
     let file = File::create(path)?;
-    let writer = BufWriter::with_capacity(128 * 1024, file);
-    bincode::serialize_into(writer, data)?;
+    let mut writer = BufWriter::with_capacity(128 * 1024, file);
+
+    writer.write_all(&encoded)?;
+    writer.flush()?;
 
     Ok(())
 }
 
-pub fn load_from_file<T: DeserializeOwned>(path: &str) -> anyhow::Result<T> {
+pub fn load_from_file<T: for<'a> Decode<'a>>(path: &str) -> anyhow::Result<T> {
     let file = File::open(path)?;
-    let mut buf_reader = BufReader::with_capacity(128 * 1024, file); // 128 kib
-    let data: T = bincode::deserialize_from(&mut buf_reader)?;
+    let mut reader = BufReader::with_capacity(128 * 1024, file);
 
-    Ok(data)
+    let mut buffer = Vec::new();
+    reader.read_to_end(&mut buffer)?;
+
+    let decoded =
+        bitcode::decode(&buffer).map_err(|e| anyhow::anyhow!("bitcode decode error: {:?}", e))?;
+
+    Ok(decoded)
 }
+
+// pub fn save_to_file<T: Serialize>(data: &T, path: &str) -> anyhow::Result<()> {
+//     println!("Serializing and saving to file");
+//     let file = File::create(path)?;
+//     let writer = BufWriter::with_capacity(128 * 1024, file);
+//     bincode::serialize_into(writer, data)?;
+
+//     Ok(())
+// }
+
+// pub fn load_from_file<T: DeserializeOwned>(path: &str) -> anyhow::Result<T> {
+//     let file = File::open(path)?;
+//     let mut buf_reader = BufReader::with_capacity(128 * 1024, file); // 128 kib
+//     let data: T = bincode::deserialize_from(&mut buf_reader)?;
+
+//     Ok(data)
+// }
 
 // TODO!
 pub fn run_interactive_session(
