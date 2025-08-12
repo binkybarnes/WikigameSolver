@@ -12,6 +12,7 @@ use std::io::{self, BufRead, BufReader, BufWriter, Read, Write};
 pub struct CsrGraph {
     pub offsets: Vec<u32>,
     pub edges: Vec<u32>,
+    pub reverse_edges: Vec<u32>,
     // page_ids are sparse, so map each page_id to 1, 2, ...
     pub orig_to_dense: FxHashMap<u32, u32>,
     pub dense_to_orig: Vec<u32>,
@@ -25,11 +26,11 @@ impl CsrGraph {
         &self.edges[start..end]
     }
 
-    pub fn get_by_orig(&self, orig_id: u32) -> Option<&[u32]> {
-        self.orig_to_dense
-            .get(&orig_id)
-            .map(|&dense_idx| self.get(dense_idx))
-    }
+    // pub fn get_by_orig(&self, orig_id: u32) -> Option<&[u32]> {
+    //     self.orig_to_dense
+    //         .get(&orig_id)
+    //         .map(|&dense_idx| self.get(dense_idx))
+    // }
 
     // if the given page is a redirect return its target, else return the same
     pub fn resolve_redirect(&self, dense_node: u32) -> Option<u32> {
@@ -48,6 +49,7 @@ impl CsrGraph {
 pub fn build_csr_with_adjacency_list(
     id_to_title: &FxHashMap<u32, String>,
     adjacency_list: &FxHashMap<u32, Vec<u32>>,
+    reverse_adjacency_list: &FxHashMap<u32, Vec<u32>>,
     redirect_targets: &FxHashMap<u32, u32>,
 ) -> CsrGraph {
     // terminology: if apple -> banana, apple is the row title, banana is column
@@ -65,6 +67,7 @@ pub fn build_csr_with_adjacency_list(
 
     let mut offsets = Vec::with_capacity(num_nodes + 1);
     let mut edges = Vec::new();
+    let mut reverse_edges = Vec::new();
     offsets.push(0);
 
     for row_title in &dense_to_orig {
@@ -77,6 +80,15 @@ pub fn build_csr_with_adjacency_list(
             edges.extend(dense_neighbors);
         }
         offsets.push(edges.len() as u32);
+
+        if let Some(neighbors) = reverse_adjacency_list.get(row_title) {
+            let mut dense_neighbors: Vec<u32> = neighbors
+                .iter()
+                .filter_map(|to| orig_to_dense.get(to).copied())
+                .collect();
+            dense_neighbors.sort_unstable(); // for locality?
+            reverse_edges.extend(dense_neighbors);
+        }
     }
 
     // translate redirect targets
@@ -100,6 +112,7 @@ pub fn build_csr_with_adjacency_list(
     CsrGraph {
         offsets,
         edges,
+        reverse_edges,
         orig_to_dense,
         dense_to_orig,
         redirect_targets_dense,
@@ -112,7 +125,7 @@ pub fn build_csr_with_adjacency_list(
 pub fn build_pagelinks(
     path: &str,
     linktargets: &FxHashMap<u32, u32>,
-) -> anyhow::Result<FxHashMap<u32, Vec<u32>>> {
+) -> anyhow::Result<(FxHashMap<u32, Vec<u32>>, FxHashMap<u32, Vec<u32>>)> {
     let file = File::open(path)?;
     let metadata = file.metadata()?;
     let file_size = metadata.len();
@@ -159,7 +172,20 @@ pub fn build_pagelinks(
     println!("page_links map length: {}", pagelinks_adjacency_list.len());
     println!("skipped ns: {}", skip_count_ns);
 
-    Ok(pagelinks_adjacency_list)
+    println!("build incoming pagelinks");
+    let mut incoming_pagelinks_adjacency_list: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
+
+    // could also build this alongside the regular pagelinks map, but this is more clear
+    for (&from, to_list) in pagelinks_adjacency_list.iter() {
+        for &to in to_list {
+            incoming_pagelinks_adjacency_list
+                .entry(to)
+                .or_default()
+                .push(from);
+        }
+    }
+
+    Ok((pagelinks_adjacency_list, incoming_pagelinks_adjacency_list))
 }
 
 // example data

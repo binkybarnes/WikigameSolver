@@ -66,7 +66,10 @@ pub fn build_and_save_linktargets() -> anyhow::Result<()> {
 
 pub fn build_and_save_page_links() -> anyhow::Result<()> {
     let linktargets: FxHashMap<u32, u32> = util::load_from_file("data/linktargets.bin")?;
-    let pagelinks_adjacency_list: FxHashMap<u32, Vec<u32>> = pagelinks_parser::build_pagelinks(
+    let (pagelinks_adjacency_list, incoming_pagelinks_adjacency_list): (
+        FxHashMap<u32, Vec<u32>>,
+        FxHashMap<u32, Vec<u32>>,
+    ) = pagelinks_parser::build_pagelinks(
         "../sql_files/enwiki-latest-pagelinks.sql.gz",
         &linktargets,
     )?;
@@ -77,8 +80,18 @@ pub fn build_and_save_page_links() -> anyhow::Result<()> {
     let pagelinks_csr: pagelinks_parser::CsrGraph = pagelinks_parser::build_csr_with_adjacency_list(
         &id_to_title,
         &pagelinks_adjacency_list,
+        &incoming_pagelinks_adjacency_list,
         &redirect_targets,
     );
+
+    util::save_to_file(
+        &pagelinks_adjacency_list,
+        "data/pagelinks_adjacency_list.bin",
+    )?;
+    util::save_to_file(
+        &incoming_pagelinks_adjacency_list,
+        "data/incoming_pagelinks_adjacency_list.bin",
+    )?;
 
     util::save_to_file(
         &pagelinks_adjacency_list,
@@ -103,6 +116,8 @@ fn main() -> anyhow::Result<()> {
     let linktargets: FxHashMap<u32, u32> = util::load_from_file("data/linktargets.bin")?;
     let pagelinks_adjacency_list: FxHashMap<u32, Vec<u32>> =
         util::load_from_file("data/pagelinks_adjacency_list.bin")?;
+    let incoming_pagelinks_adjacency_list: FxHashMap<u32, Vec<u32>> =
+        util::load_from_file("data/incoming_pagelinks_adjacency_list.bin")?;
     let pagelinks_csr: pagelinks_parser::CsrGraph = util::load_from_file("data/pagelinks_csr.bin")?;
 
     println!("loaded");
@@ -125,6 +140,7 @@ fn main() -> anyhow::Result<()> {
         &id_to_title,
         &pagelinks_csr,
         &pagelinks_adjacency_list,
+        &incoming_pagelinks_adjacency_list,
         &redirect_targets,
     );
 
