@@ -72,6 +72,7 @@ pub fn bfs_adj_list(
                                 goal,
                                 &parents,
                                 &redirects_passed,
+                                true,
                             ));
                         }
                         queue.push_back(neighbor);
@@ -149,6 +150,7 @@ pub fn bfs_adj_list_backwards(
                                             goal,
                                             &parents,
                                             &redirects_passed,
+                                            true,
                                         ));
                                     }
                                     queue.push_back(redirect_neighbor);
@@ -166,6 +168,7 @@ pub fn bfs_adj_list_backwards(
                                     goal,
                                     &parents,
                                     &redirects_passed,
+                                    true,
                                 ));
                             }
                             queue.push_back(raw_neighbor);
@@ -348,168 +351,12 @@ pub fn bi_bfs_adj_list(
     None
 }
 
-// pub fn bi_bfs_adj_list(
-//     graph_fwd: &FxHashMap<u32, Vec<u32>>,
-//     graph_bwd: &FxHashMap<u32, Vec<u32>>,
-//     redirect_targets: &FxHashMap<u32, u32>,
-//     orig_start: u32,
-//     orig_goal: u32,
-//     max_depth: u8,
-// ) -> Option<Vec<u32>> {
-//     let now = Instant::now();
-
-//     let start = redirect_targets
-//         .get(&orig_start)
-//         .copied()
-//         .unwrap_or(orig_start);
-//     let goal = redirect_targets
-//         .get(&orig_goal)
-//         .copied()
-//         .unwrap_or(orig_goal);
-
-//     // case where start is same as goal (can happen when the start is a redirect to the goal)
-//     if start == goal {
-//         return Some(vec![orig_start]);
-//     }
-
-//     let mut queue_fwd = VecDeque::new();
-//     let mut queue_bwd = VecDeque::new();
-//     let mut parents_fwd = FxHashMap::default();
-//     let mut parents_bwd = FxHashMap::default();
-//     // if you encounter a neighbor on a page that is a redirect, add the resolved redirect target to the frontier, but also add the redirect to the map
-//     // (page, redirect target): target   ----   so when you rebuild the path you can change it back into the redirect that was found on that page
-//     let mut redirects_passed_fwd: FxHashMap<(u32, u32), u32> = FxHashMap::default();
-//     let mut redirects_passed_bwd: FxHashMap<(u32, u32), u32> = FxHashMap::default();
-
-//     parents_fwd.insert(start, start); // mark start as visited
-//     parents_bwd.insert(goal, goal); // mark start as visited
-
-//     queue_fwd.push_back(start);
-//     queue_bwd.push_back(goal);
-
-//     // let mut depth = 0;
-//     let mut depth_fwd = 0;
-//     let mut depth_bwd = 0;
-
-//     while !queue_fwd.is_empty() && !queue_bwd.is_empty() {
-//         // expand the smaller queue
-//         let (queue, parents_this, parents_other, redirects_passed_this, graph, fwd_smaller) =
-//             if queue_fwd.len() <= queue_bwd.len() {
-//                 (
-//                     &mut queue_fwd,
-//                     &mut parents_fwd,
-//                     &mut parents_bwd,
-//                     &mut redirects_passed_fwd,
-//                     graph_fwd,
-//                     true,
-//                 )
-//             } else {
-//                 (
-//                     &mut queue_bwd,
-//                     &mut parents_bwd,
-//                     &mut parents_fwd,
-//                     &mut redirects_passed_bwd,
-//                     graph_bwd,
-//                     false,
-//                 )
-//             };
-
-//         if fwd_smaller {
-//             depth_fwd += 1;
-//             println!("Depth forward {}", depth_fwd);
-//             if depth_fwd + depth_bwd >= max_depth {
-//                 println!("MAX DEPTH REACHED");
-//                 return None;
-//             }
-//         } else {
-//             depth_bwd += 1;
-//             println!("Depth backwards {}", depth_bwd);
-//             if depth_fwd + depth_bwd >= max_depth {
-//                 println!("MAX DEPTH REACHED");
-//                 return None;
-//             }
-//         }
-
-//         let mut level_size = queue.len();
-//         for _ in 0..level_size {
-//             let node = queue.pop_front().unwrap();
-
-//             if let Some(neighbors) = graph.get(&node) {
-//                 for &raw_neighbor in neighbors {
-//                     let neighbor = if fwd_smaller {
-//                         // FORWARD mode
-//                         if let Some(&redirect_target) = redirect_targets.get(&raw_neighbor) {
-//                             redirects_passed_this.insert((node, redirect_target), raw_neighbor);
-//                             redirect_target
-//                         } else {
-//                             raw_neighbor
-//                         }
-//                     } else {
-//                         // BACKWARDS mode
-//                         // if an incoming neighbor is a redirect, add the neighbors of the redirect to the front
-//                         if redirect_targets.contains_key(&raw_neighbor) {
-//                             if let Some(redirect_neighbors) = graph.get(&raw_neighbor) {
-//                                 for &redirect_neighbor in redirect_neighbors {
-//                                     if !parents_this.contains_key(&redirect_neighbor) {
-//                                         redirects_passed_this
-//                                             .insert((redirect_neighbor, node), raw_neighbor);
-//                                         parents_this.insert(redirect_neighbor, node);
-//                                         // check for meeting point
-//                                         if parents_other.contains_key(&redirect_neighbor) {
-//                                             println!("Elapsed: {:.2?}", now.elapsed());
-//                                             return Some(merge_paths(
-//                                                 start,
-//                                                 goal,
-//                                                 redirect_neighbor,
-//                                                 &parents_fwd,
-//                                                 &parents_bwd,
-//                                                 &redirects_passed_fwd,
-//                                                 &redirects_passed_bwd,
-//                                             ));
-//                                         }
-//                                         queue.push_back(redirect_neighbor);
-//                                     }
-//                                 }
-//                             }
-//                             // add the redirect to be expanded in the same depth as the node (or u can push_back the neighors of this redirect rn)
-//                             queue.push_front(raw_neighbor);
-//                             level_size += 1;
-//                             continue; // skip pushing the redirect
-//                         } else {
-//                             raw_neighbor
-//                         }
-//                     };
-
-//                     if !parents_this.contains_key(&neighbor) {
-//                         parents_this.insert(neighbor, node);
-//                         // check for meeting point
-//                         if parents_other.contains_key(&neighbor) {
-//                             println!("Elapsed: {:.2?}", now.elapsed());
-//                             return Some(merge_paths(
-//                                 start,
-//                                 goal,
-//                                 neighbor,
-//                                 &parents_fwd,
-//                                 &parents_bwd,
-//                                 &redirects_passed_fwd,
-//                                 &redirects_passed_bwd,
-//                             ));
-//                         }
-//                         queue.push_back(neighbor);
-//                     }
-//                 }
-//             }
-//         }
-//     }
-
-//     None
-// }
-
 pub fn reconstruct_path(
     start: u32,
     goal: u32,
     parents: &FxHashMap<u32, u32>,
     redirects_passed: &FxHashMap<(u32, u32), u32>,
+    return_redirects: bool,
 ) -> Vec<u32> {
     // reconstruct path
     let mut path = Vec::new();
@@ -523,6 +370,10 @@ pub fn reconstruct_path(
         current = parent;
     }
     path.reverse();
+
+    if !return_redirects {
+        return path;
+    };
 
     // turn the target back into the redirect that led it there
     let mut resolved_path = Vec::new();
@@ -546,8 +397,8 @@ pub fn reconstruct_path_backwards(
     goal: u32,
     parents: &FxHashMap<u32, u32>,
     redirects_passed: &FxHashMap<(u32, u32), u32>,
+    return_redirects: bool,
 ) -> Vec<u32> {
-    println!("reconstructing");
     // reconstruct path
     let mut path = Vec::new();
     let mut current = start;
@@ -559,8 +410,9 @@ pub fn reconstruct_path_backwards(
         let &parent = parents.get(&current).unwrap();
         current = parent;
     }
-
-    println!("resolving");
+    if !return_redirects {
+        return path;
+    };
 
     // turn the target back into the redirect that led it there
     let mut resolved_path = Vec::new();
@@ -587,20 +439,18 @@ fn merge_paths(
     redirects_fwd: &FxHashMap<(u32, u32), u32>,
     redirects_bwd: &FxHashMap<(u32, u32), u32>,
 ) -> Vec<u32> {
-    println!("path forward reconstructing");
-    let mut path_fwd = reconstruct_path(start, meet, parents_fwd, redirects_fwd);
-    println!("path backward reconstructing");
-    let path_bwd = reconstruct_path_backwards(meet, goal, parents_bwd, redirects_bwd);
+    let mut path_fwd = reconstruct_path(start, meet, parents_fwd, redirects_fwd, true);
+    let path_bwd = reconstruct_path_backwards(meet, goal, parents_bwd, redirects_bwd, true);
 
-    path_fwd.pop(); // remove duplicate meet point
-    println!("Forward path: {:?}", path_fwd);
-    println!("Backward path: {:?}", path_bwd);
-    path_fwd.extend(path_bwd);
-    println!("Forward path: {:?}", path_fwd);
+    // do not pop from path_fwd.pop(); if the meet point is supposed to be a redirect, it only gets put back in path_fwd
+    // because for path_bwd the meet point is at the front which doesn't get changes
+    // ex: Forward path: [1613879 Plastic_bag, 70691392 Phase-out_of_lightweight_plastic_bags] Backward path: [36080727 Plastic_bag_ban]
+
+    // remove duplicate meet point (first element of path_bwd)
+    path_fwd.extend(&path_bwd[1..]);
     path_fwd
 }
 
-// maybe make a converted redirect map cause maybe thats why its slow
 fn bfs_csr(
     graph: &pagelinks_parser::CsrGraph,
     orig_start: u32,
@@ -663,6 +513,7 @@ fn bfs_csr(
                             &parents,
                             &redirects_passed,
                             &graph.dense_to_orig,
+                            true,
                         ));
                     }
                     queue.push_back(neighbor);
@@ -682,8 +533,9 @@ pub fn reconstruct_path_csr(
     parents: &FxHashMap<u32, u32>,
     redirects_passed: &FxHashMap<(u32, u32), u32>,
     dense_to_orig: &Vec<u32>,
+    return_redirects: bool,
 ) -> Vec<u32> {
-    let path = reconstruct_path(start, goal, parents, redirects_passed);
+    let path = reconstruct_path(start, goal, parents, redirects_passed, return_redirects);
 
     let orig_path: Vec<u32> = path
         .into_iter()
