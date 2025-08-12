@@ -12,6 +12,7 @@ use std::io::{self, BufRead, BufReader, BufWriter, Read, Write};
 pub struct CsrGraph {
     pub offsets: Vec<u32>,
     pub edges: Vec<u32>,
+    pub reverse_offsets: Vec<u32>,
     pub reverse_edges: Vec<u32>,
     // page_ids are sparse, so map each page_id to 1, 2, ...
     pub orig_to_dense: FxHashMap<u32, u32>,
@@ -24,6 +25,11 @@ impl CsrGraph {
         let start = self.offsets[dense_node as usize] as usize;
         let end = self.offsets[dense_node as usize + 1] as usize;
         &self.edges[start..end]
+    }
+    pub fn get_reverse(&self, dense_node: u32) -> &[u32] {
+        let start = self.reverse_offsets[dense_node as usize] as usize;
+        let end = self.reverse_offsets[dense_node as usize + 1] as usize;
+        &self.reverse_edges[start..end]
     }
 
     // pub fn get_by_orig(&self, orig_id: u32) -> Option<&[u32]> {
@@ -66,9 +72,11 @@ pub fn build_csr_with_adjacency_list(
     }
 
     let mut offsets = Vec::with_capacity(num_nodes + 1);
+    let mut reverse_offsets = Vec::with_capacity(num_nodes + 1);
     let mut edges = Vec::new();
     let mut reverse_edges = Vec::new();
     offsets.push(0);
+    reverse_offsets.push(0);
 
     for row_title in &dense_to_orig {
         if let Some(neighbors) = adjacency_list.get(row_title) {
@@ -81,6 +89,7 @@ pub fn build_csr_with_adjacency_list(
         }
         offsets.push(edges.len() as u32);
 
+        // building reverse edges
         if let Some(neighbors) = reverse_adjacency_list.get(row_title) {
             let mut dense_neighbors: Vec<u32> = neighbors
                 .iter()
@@ -89,6 +98,7 @@ pub fn build_csr_with_adjacency_list(
             dense_neighbors.sort_unstable(); // for locality?
             reverse_edges.extend(dense_neighbors);
         }
+        reverse_offsets.push(reverse_edges.len() as u32);
     }
 
     // translate redirect targets
@@ -112,6 +122,7 @@ pub fn build_csr_with_adjacency_list(
     CsrGraph {
         offsets,
         edges,
+        reverse_offsets,
         reverse_edges,
         orig_to_dense,
         dense_to_orig,
