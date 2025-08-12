@@ -32,7 +32,8 @@ pub fn bfs_adj_list(
     }
 
     let mut queue = VecDeque::new();
-    let mut parents = FxHashMap::default();
+    // going to make it so a node can have multiple parents (for multiple shortest paths)
+    let mut parents: FxHashMap<u32, u32> = FxHashMap::default();
     // if you encounter a neighbor on a page that is a redirect, add the resolved redirect target to the frontier, but also add the redirect to the map
     // (page, redirect target): redirect   ----   so when you rebuild the path you can change it back into the redirect that was found on that page
     let mut redirects_passed: FxHashMap<(u32, u32), u32> = FxHashMap::default();
@@ -63,6 +64,7 @@ pub fn bfs_adj_list(
                             raw_neighbor
                         };
                     if !parents.contains_key(&neighbor) {
+                        // parents.entry(neighbor).or_default().push(node);
                         parents.insert(neighbor, node);
                         if neighbor == goal {
                             let elapsed = now.elapsed();
@@ -73,6 +75,7 @@ pub fn bfs_adj_list(
                                 &parents,
                                 &redirects_passed,
                                 true,
+                                false,
                             ));
                         }
                         queue.push_back(neighbor);
@@ -145,11 +148,12 @@ pub fn bfs_adj_list_backwards(
                                     if redirect_neighbor == start {
                                         let elapsed = now.elapsed();
                                         println!("Elapsed: {:.2?}", elapsed);
-                                        return Some(reconstruct_path_backwards(
-                                            start,
+                                        return Some(reconstruct_path(
                                             goal,
+                                            start,
                                             &parents,
                                             &redirects_passed,
+                                            true,
                                             true,
                                         ));
                                     }
@@ -163,11 +167,12 @@ pub fn bfs_adj_list_backwards(
                             if raw_neighbor == start {
                                 let elapsed = now.elapsed();
                                 println!("Elapsed: {:.2?}", elapsed);
-                                return Some(reconstruct_path_backwards(
-                                    start,
+                                return Some(reconstruct_path(
                                     goal,
+                                    start,
                                     &parents,
                                     &redirects_passed,
+                                    true,
                                     true,
                                 ));
                             }
@@ -351,12 +356,23 @@ pub fn bi_bfs_adj_list(
     None
 }
 
+// pub fn reconstruct_all_paths(
+//     start: u32,
+//     goal: u32,
+//     parents: &FxHashMap<u32, Vec<u32>>,
+//     redirects_passed: &FxHashMap<(u32, u32), u32>,
+//     return_redirects: bool,
+// ) -> Vec<Vec<u32>> {
+
+// }
+
 pub fn reconstruct_path(
     start: u32,
     goal: u32,
     parents: &FxHashMap<u32, u32>,
     redirects_passed: &FxHashMap<(u32, u32), u32>,
     return_redirects: bool,
+    reverse: bool,
 ) -> Vec<u32> {
     // reconstruct path
     let mut path = Vec::new();
@@ -369,7 +385,11 @@ pub fn reconstruct_path(
         let &parent = parents.get(&current).unwrap();
         current = parent;
     }
-    path.reverse();
+
+    // this looks funny but the forward path should be reversed since you start parent backtracking from the goal, backwards should not since it already starts at the goal
+    if !reverse {
+        path.reverse()
+    }
 
     if !return_redirects {
         return path;
@@ -377,7 +397,7 @@ pub fn reconstruct_path(
 
     // turn the target back into the redirect that led it there
     let mut resolved_path = Vec::new();
-    resolved_path.push(start);
+    resolved_path.push(path[0]);
     for window in path.windows(2) {
         let prev_node = window[0];
         let node = window[1];
@@ -391,44 +411,44 @@ pub fn reconstruct_path(
     return resolved_path;
 }
 
-// when using incoming links
-pub fn reconstruct_path_backwards(
-    start: u32,
-    goal: u32,
-    parents: &FxHashMap<u32, u32>,
-    redirects_passed: &FxHashMap<(u32, u32), u32>,
-    return_redirects: bool,
-) -> Vec<u32> {
-    // reconstruct path
-    let mut path = Vec::new();
-    let mut current = start;
-    loop {
-        path.push(current);
-        if current == goal {
-            break;
-        }
-        let &parent = parents.get(&current).unwrap();
-        current = parent;
-    }
-    if !return_redirects {
-        return path;
-    };
+// // when using incoming links
+// pub fn reconstruct_path_backwards(
+//     start: u32,
+//     goal: u32,
+//     parents: &FxHashMap<u32, u32>,
+//     redirects_passed: &FxHashMap<(u32, u32), u32>,
+//     return_redirects: bool,
+// ) -> Vec<u32> {
+//     // reconstruct path
+//     let mut path = Vec::new();
+//     let mut current = start;
+//     loop {
+//         path.push(current);
+//         if current == goal {
+//             break;
+//         }
+//         let &parent = parents.get(&current).unwrap();
+//         current = parent;
+//     }
+//     if !return_redirects {
+//         return path;
+//     };
 
-    // turn the target back into the redirect that led it there
-    let mut resolved_path = Vec::new();
-    resolved_path.push(start);
-    for window in path.windows(2) {
-        let prev_node = window[0];
-        let node = window[1];
-        resolved_path.push(
-            redirects_passed
-                .get(&(prev_node, node))
-                .copied()
-                .unwrap_or(node),
-        );
-    }
-    return resolved_path;
-}
+//     // turn the target back into the redirect that led it there
+//     let mut resolved_path = Vec::new();
+//     resolved_path.push(path[0]);
+//     for window in path.windows(2) {
+//         let prev_node = window[0];
+//         let node = window[1];
+//         resolved_path.push(
+//             redirects_passed
+//                 .get(&(prev_node, node))
+//                 .copied()
+//                 .unwrap_or(node),
+//         );
+//     }
+//     return resolved_path;
+// }
 
 fn merge_paths(
     start: u32,
@@ -439,8 +459,8 @@ fn merge_paths(
     redirects_fwd: &FxHashMap<(u32, u32), u32>,
     redirects_bwd: &FxHashMap<(u32, u32), u32>,
 ) -> Vec<u32> {
-    let mut path_fwd = reconstruct_path(start, meet, parents_fwd, redirects_fwd, true);
-    let path_bwd = reconstruct_path_backwards(meet, goal, parents_bwd, redirects_bwd, true);
+    let mut path_fwd = reconstruct_path(start, meet, parents_fwd, redirects_fwd, true, false);
+    let path_bwd = reconstruct_path(goal, meet, parents_bwd, redirects_bwd, true, true);
 
     // do not pop from path_fwd.pop(); if the meet point is supposed to be a redirect, it only gets put back in path_fwd
     // because for path_bwd the meet point is at the front which doesn't get changes
@@ -514,6 +534,7 @@ fn bfs_csr(
                             &redirects_passed,
                             &graph.dense_to_orig,
                             true,
+                            false,
                         ));
                     }
                     queue.push_back(neighbor);
@@ -583,12 +604,13 @@ fn bfs_csr_backwards(
                             if redirect_neighbor == start {
                                 let elapsed = now.elapsed();
                                 println!("Elapsed: {:.2?}", elapsed);
-                                return Some(reconstruct_path_csr_backwards(
-                                    start,
+                                return Some(reconstruct_path_csr(
                                     goal,
+                                    start,
                                     &parents,
                                     &redirects_passed,
                                     &graph.dense_to_orig,
+                                    true,
                                     true,
                                 ));
                             }
@@ -601,12 +623,13 @@ fn bfs_csr_backwards(
                         if raw_neighbor == start {
                             let elapsed = now.elapsed();
                             println!("Elapsed: {:.2?}", elapsed);
-                            return Some(reconstruct_path_csr_backwards(
-                                start,
+                            return Some(reconstruct_path_csr(
                                 goal,
+                                start,
                                 &parents,
                                 &redirects_passed,
                                 &graph.dense_to_orig,
+                                true,
                                 true,
                             ));
                         }
@@ -793,8 +816,16 @@ pub fn reconstruct_path_csr(
     redirects_passed: &FxHashMap<(u32, u32), u32>,
     dense_to_orig: &Vec<u32>,
     return_redirects: bool,
+    reverse: bool,
 ) -> Vec<u32> {
-    let path = reconstruct_path(start, goal, parents, redirects_passed, return_redirects);
+    let path = reconstruct_path(
+        start,
+        goal,
+        parents,
+        redirects_passed,
+        return_redirects,
+        reverse,
+    );
 
     let orig_path: Vec<u32> = path
         .into_iter()
@@ -804,23 +835,23 @@ pub fn reconstruct_path_csr(
     return orig_path;
 }
 
-pub fn reconstruct_path_csr_backwards(
-    start: u32,
-    goal: u32,
-    parents: &FxHashMap<u32, u32>,
-    redirects_passed: &FxHashMap<(u32, u32), u32>,
-    dense_to_orig: &Vec<u32>,
-    return_redirects: bool,
-) -> Vec<u32> {
-    let path = reconstruct_path_backwards(start, goal, parents, redirects_passed, return_redirects);
+// pub fn reconstruct_path_csr_backwards(
+//     start: u32,
+//     goal: u32,
+//     parents: &FxHashMap<u32, u32>,
+//     redirects_passed: &FxHashMap<(u32, u32), u32>,
+//     dense_to_orig: &Vec<u32>,
+//     return_redirects: bool,
+// ) -> Vec<u32> {
+//     let path = reconstruct_path_backwards(start, goal, parents, redirects_passed, return_redirects);
 
-    let orig_path: Vec<u32> = path
-        .into_iter()
-        .map(|node| dense_to_orig[node as usize])
-        .collect();
+//     let orig_path: Vec<u32> = path
+//         .into_iter()
+//         .map(|node| dense_to_orig[node as usize])
+//         .collect();
 
-    return orig_path;
-}
+//     return orig_path;
+// }
 
 fn merge_paths_csr(
     start: u32,
