@@ -2,8 +2,6 @@ use rustc_hash::FxHashMap;
 use std::{
     collections::VecDeque,
     io::{self, Write},
-    os::unix::process,
-    thread::current,
     time::Instant,
 };
 
@@ -274,6 +272,9 @@ pub fn bi_bfs_adj_list(
     if meet_found_at_depth.is_some() {
         let elapsed = now.elapsed();
         println!("Elapsed: {:.2?}", elapsed);
+        meet_nodes.sort_unstable();
+        meet_nodes.dedup();
+
         return Some(merge_all_paths(
             start,
             &meet_nodes,
@@ -389,10 +390,6 @@ pub fn merge_all_paths(
             }
         }
     }
-
-    // even though reconstruct_all_paths doesnt contain duplicates (at least it shouldnt), when combining like this there can be duplicates for some reason
-    final_paths.sort_unstable();
-    final_paths.dedup();
 
     final_paths
 }
@@ -602,6 +599,9 @@ pub fn bi_bfs_csr(
     if meet_found_at_depth.is_some() {
         let elapsed = now.elapsed();
         println!("Elapsed: {:.2?}", elapsed);
+
+        meet_nodes.sort_unstable();
+        meet_nodes.dedup();
         return Some(merge_all_paths_csr(
             start,
             &meet_nodes,
@@ -1022,10 +1022,10 @@ pub fn bfs_interactive_session(
     title_to_id: &FxHashMap<String, u32>,
     id_to_title: &FxHashMap<u32, String>,
     csr_graph: &pagelinks_parser::CsrGraph,
-    adj_graph: &FxHashMap<u32, Vec<u32>>,
-    adj_graph_bwd: &FxHashMap<u32, Vec<u32>>,
+    // adj_graph: &FxHashMap<u32, Vec<u32>>,
+    // adj_graph_bwd: &FxHashMap<u32, Vec<u32>>,
     redirect_targets: &FxHashMap<u32, u32>,
-    redirects_passed: &FxHashMap<(u32, u32), u32>,
+    // redirects_passed: &FxHashMap<(u32, u32), u32>,
 ) {
     let stdin = io::stdin();
     let mut stdout = io::stdout();
@@ -1173,41 +1173,41 @@ pub fn bfs_interactive_session(
         //     println!("One or both BFS searches did not find paths, skipping comparison.");
         // }
 
-        println!("\nRunning bidirectional BFS on adjacency list graph...");
-        let now = Instant::now();
-        let paths_adj_bwd = bi_bfs_adj_list(
-            adj_graph,
-            adj_graph_bwd,
-            redirects_passed,
-            start_id,
-            goal_id,
-            max_depth,
-        );
-        let elapsed_bwd = now.elapsed();
+        // println!("\nRunning bidirectional BFS on adjacency list graph...");
+        // let now = Instant::now();
+        // let paths_adj_bwd = bi_bfs_adj_list(
+        //     adj_graph,
+        //     adj_graph_bwd,
+        //     redirects_passed,
+        //     start_id,
+        //     goal_id,
+        //     max_depth,
+        // );
+        // let elapsed_bwd = now.elapsed();
 
-        match &paths_adj_bwd {
-            Some(paths) if !paths.is_empty() => {
-                println!(
-                    "Paths found (adjacency list) [{} shortest paths, {:.2?}]:",
-                    paths.len(),
-                    elapsed_bwd
-                );
-                let path = &paths[0];
-                println!("Path 1 ({} nodes):", path.len());
-                for id in path {
-                    let title = id_to_title
-                        .get(id)
-                        .map(String::as_str)
-                        .unwrap_or("[Unknown]");
-                    print!("{} -> ", title);
-                }
-                println!("END");
-            }
-            _ => println!(
-                "No path found in adjacency list BFS (after {:.2?}).",
-                elapsed_bwd
-            ),
-        }
+        // match &paths_adj_bwd {
+        //     Some(paths) if !paths.is_empty() => {
+        //         println!(
+        //             "Paths found (adjacency list) [{} shortest paths, {:.2?}]:",
+        //             paths.len(),
+        //             elapsed_bwd
+        //         );
+        //         let path = &paths[0];
+        //         println!("Path 1 ({} nodes):", path.len());
+        //         for id in path {
+        //             let title = id_to_title
+        //                 .get(id)
+        //                 .map(String::as_str)
+        //                 .unwrap_or("[Unknown]");
+        //             print!("{} -> ", title);
+        //         }
+        //         println!("END");
+        //     }
+        //     _ => println!(
+        //         "No path found in adjacency list BFS (after {:.2?}).",
+        //         elapsed_bwd
+        //     ),
+        // }
 
         // println!("\nRunning forwards BFS on CSR graph...");
         // let now = Instant::now();

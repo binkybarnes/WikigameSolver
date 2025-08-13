@@ -14,5 +14,6 @@ indicatif = { version = "*" }
 rustc-hash = "2.1.1"
 bitcode = "=0.6.6"
 rayon = "1.11.0"
+
 # in pagelinks_parser.rs
 atoi = "2.0.0"
