@@ -48,33 +48,23 @@ fn process_neighbor(
 // ilisendipede something -> Leptorhynchoididae (redirect to target)
 pub fn bfs_adj_list(
     graph: &FxHashMap<u32, Vec<u32>>,
-    redirect_targets: &FxHashMap<u32, u32>,
-    orig_start: u32,
-    orig_goal: u32,
+    redirects_passed: &FxHashMap<(u32, u32), u32>,
+    start: u32,
+    goal: u32,
     max_depth: u8,
 ) -> Option<Vec<Vec<u32>>> {
     let now = Instant::now();
 
-    let start = redirect_targets
-        .get(&orig_start)
-        .copied()
-        .unwrap_or(orig_start);
-    let goal = redirect_targets
-        .get(&orig_goal)
-        .copied()
-        .unwrap_or(orig_goal);
+    // DO NOT PASS IN REDIRECTS AS START AND GOAL
 
     // case where start is same as goal (can happen when the start is a redirect to the goal)
     if start == goal {
-        return Some(vec![vec![orig_start]]);
+        return Some(vec![vec![start]]);
     }
 
     let mut queue = VecDeque::new();
     // going to make it so a node can have multiple parents (for multiple shortest paths)
     let mut parents: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
-    // if you encounter a neighbor on a page that is a redirect, add the resolved redirect target to the frontier, but also add the redirect to the map
-    // (page, redirect target): redirect   ----   so when you rebuild the path you can change it back into the redirect that was found on that page
-    let mut redirects_passed: FxHashMap<(u32, u32), u32> = FxHashMap::default();
     // now that a node can have multiple parents, i have to make sure the neighbors are on the same depth, or there will be a loop
     let mut visited_depth: FxHashMap<u32, u8> = FxHashMap::default();
 
@@ -104,13 +94,7 @@ pub fn bfs_adj_list(
         let next_depth = current_depth + 1;
 
         if let Some(neighbors) = graph.get(&node) {
-            for &raw_neighbor in neighbors {
-                let neighbor = if let Some(&redirect_target) = redirect_targets.get(&raw_neighbor) {
-                    redirects_passed.insert((node, redirect_target), raw_neighbor);
-                    redirect_target
-                } else {
-                    raw_neighbor
-                };
+            for &neighbor in neighbors {
                 process_neighbor(
                     neighbor,
                     next_depth,
@@ -121,27 +105,6 @@ pub fn bfs_adj_list(
                     &mut goal_found_at_depth,
                     &mut queue,
                 );
-                // match visited_depth.get(&neighbor) {
-                //     // Case 1: Never seen this neighbor before. This is a valid new path.
-                //     None => {
-                //         visited_depth.insert(neighbor, next_depth);
-                //         parents.insert(neighbor, vec![node]);
-                //         queue.push_back((neighbor, next_depth));
-                //     }
-                //     // Case 2: Seen this neighbor before AT THE SAME DEPTH. This is a valid parallel path.
-                //     Some(&depth) if depth == next_depth => {
-                //         parents.get_mut(&neighbor).unwrap().push(node);
-                //     }
-                //     // Case 3: Seen this neighbor before at an earlier depth. This is a longer path or a cycle. Ignore it.
-                //     _ => (),
-                // }
-
-                // if neighbor == goal {
-                //     if goal_found_at_depth.is_none() {
-                //         println!("path found at depth {}", next_depth);
-                //         goal_found_at_depth = Some(next_depth);
-                //     }
-                // }
             }
         }
     }
@@ -164,33 +127,21 @@ pub fn bfs_adj_list(
 
 pub fn bfs_adj_list_backwards(
     graph: &FxHashMap<u32, Vec<u32>>,
-    redirect_targets: &FxHashMap<u32, u32>,
-    orig_start: u32,
-    orig_goal: u32,
+    redirects_passed: &FxHashMap<(u32, u32), u32>,
+    start: u32,
+    goal: u32,
     max_depth: u8,
 ) -> Option<Vec<Vec<u32>>> {
     let now = Instant::now();
 
-    let start = redirect_targets
-        .get(&orig_start)
-        .copied()
-        .unwrap_or(orig_start);
-    let goal = redirect_targets
-        .get(&orig_goal)
-        .copied()
-        .unwrap_or(orig_goal);
-
     // case where start is same as goal (can happen when the start is a redirect to the goal)
     if start == goal {
-        return Some(vec![vec![orig_goal]]);
+        return Some(vec![vec![goal]]);
     }
 
     let mut queue = VecDeque::new();
     // going to make it so a node can have multiple parents (for multiple shortest paths)
     let mut parents: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
-    // if you encounter a neighbor on a page that is a redirect, add the resolved redirect target to the frontier, but also add the redirect to the map
-    // (page, redirect target): redirect   ----   so when you rebuild the path you can change it back into the redirect that was found on that page
-    let mut redirects_passed: FxHashMap<(u32, u32), u32> = FxHashMap::default();
     // now that a node can have multiple parents, i have to make sure the neighbors are on the same depth, or there will be a loop
     let mut visited_depth: FxHashMap<u32, u8> = FxHashMap::default();
 
@@ -220,35 +171,17 @@ pub fn bfs_adj_list_backwards(
         let next_depth = current_depth + 1;
 
         if let Some(neighbors) = graph.get(&node) {
-            for &raw_neighbor in neighbors {
-                if redirect_targets.contains_key(&raw_neighbor) {
-                    if let Some(redirect_neighbors) = graph.get(&raw_neighbor) {
-                        for &redirect_neighbor in redirect_neighbors {
-                            redirects_passed.insert((redirect_neighbor, node), raw_neighbor);
-                            process_neighbor(
-                                redirect_neighbor,
-                                next_depth,
-                                start,
-                                &mut visited_depth,
-                                &mut parents,
-                                node,
-                                &mut goal_found_at_depth,
-                                &mut queue,
-                            );
-                        }
-                    }
-                } else {
-                    process_neighbor(
-                        raw_neighbor,
-                        next_depth,
-                        start,
-                        &mut visited_depth,
-                        &mut parents,
-                        node,
-                        &mut goal_found_at_depth,
-                        &mut queue,
-                    );
-                }
+            for &neighbor in neighbors {
+                process_neighbor(
+                    neighbor,
+                    next_depth,
+                    start,
+                    &mut visited_depth,
+                    &mut parents,
+                    node,
+                    &mut goal_found_at_depth,
+                    &mut queue,
+                );
             }
         }
     }
@@ -1164,6 +1097,7 @@ pub fn bfs_interactive_session(
     adj_graph: &FxHashMap<u32, Vec<u32>>,
     adj_graph_bwd: &FxHashMap<u32, Vec<u32>>,
     redirect_targets: &FxHashMap<u32, u32>,
+    redirects_passed: &FxHashMap<(u32, u32), u32>,
 ) {
     let stdin = io::stdin();
     let mut stdout = io::stdout();
@@ -1191,20 +1125,31 @@ pub fn bfs_interactive_session(
             break;
         }
 
-        let Some(&start_id) = title_to_id.get(start_title) else {
+        let Some(&start_id_raw) = title_to_id.get(start_title) else {
             println!("Start title '{}' not found in mapping.", start_title);
             continue;
         };
-        let Some(&goal_id) = title_to_id.get(goal_title) else {
+        let Some(&goal_id_raw) = title_to_id.get(goal_title) else {
             println!("Goal title '{}' not found in mapping.", goal_title);
             continue;
         };
+
+        let mut start_id = start_id_raw;
+        let mut goal_id = goal_id_raw;
+
+        // Resolve redirects
+        if let Some(&redirect_target) = redirect_targets.get(&start_id) {
+            start_id = redirect_target;
+        }
+        if let Some(&redirect_target) = redirect_targets.get(&goal_id) {
+            goal_id = redirect_target;
+        }
 
         let max_depth = 50;
 
         println!("\nRunning forwards BFS on adjacency list graph...");
         let now = Instant::now();
-        let paths_adj_fwd = bfs_adj_list(adj_graph, redirect_targets, start_id, goal_id, max_depth);
+        let paths_adj_fwd = bfs_adj_list(adj_graph, redirects_passed, start_id, goal_id, max_depth);
         let elapsed_fwd = now.elapsed();
 
         match &paths_adj_fwd {
@@ -1235,7 +1180,7 @@ pub fn bfs_interactive_session(
         let now = Instant::now();
         let paths_adj_bwd = bfs_adj_list_backwards(
             adj_graph_bwd,
-            redirect_targets,
+            redirects_passed,
             start_id,
             goal_id,
             max_depth,

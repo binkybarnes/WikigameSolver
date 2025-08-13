@@ -136,7 +136,12 @@ pub fn build_csr_with_adjacency_list(
 pub fn build_pagelinks(
     path: &str,
     linktargets: &FxHashMap<u32, u32>,
-) -> anyhow::Result<(FxHashMap<u32, Vec<u32>>, FxHashMap<u32, Vec<u32>>)> {
+    redirect_targets: &FxHashMap<u32, u32>,
+) -> anyhow::Result<(
+    FxHashMap<u32, Vec<u32>>,
+    FxHashMap<u32, Vec<u32>>,
+    FxHashMap<(u32, u32), u32>,
+)> {
     let file = File::open(path)?;
     let metadata = file.metadata()?;
     let file_size = metadata.len();
@@ -163,6 +168,8 @@ pub fn build_pagelinks(
     let hasher = FxBuildHasher::default();
     let mut pagelinks_adjacency_list: FxHashMap<u32, Vec<u32>> =
         FxHashMap::with_capacity_and_hasher(estimated_entries, hasher);
+    // if a link on a page is a redirect, store in the map[(page from, redirect target to), redirect to] so we can turn it back later
+    let mut redirects_passed: FxHashMap<(u32, u32), u32> = FxHashMap::default();
 
     // regex too slow (10 mins, this is 4 min)
     // const PREFIX: &str = "INSERT INTO `pagelinks` VALUES (";
@@ -174,10 +181,18 @@ pub fn build_pagelinks(
         parse_line_bytes(
             &line_buf,
             &linktargets,
+            &redirect_targets,
             &mut pagelinks_adjacency_list,
+            &mut redirects_passed,
             &mut skip_count_ns,
         );
         line_buf.clear();
+    }
+
+    println!("DEDUPING NEIGHBORS");
+    for neighbors in pagelinks_adjacency_list.values_mut() {
+        neighbors.sort_unstable();
+        neighbors.dedup();
     }
 
     println!("page_links map length: {}", pagelinks_adjacency_list.len());
@@ -196,7 +211,11 @@ pub fn build_pagelinks(
         }
     }
 
-    Ok((pagelinks_adjacency_list, incoming_pagelinks_adjacency_list))
+    Ok((
+        pagelinks_adjacency_list,
+        incoming_pagelinks_adjacency_list,
+        redirects_passed,
+    ))
 }
 
 // example data
@@ -204,7 +223,9 @@ pub fn build_pagelinks(
 fn parse_line_bytes(
     line_buf: &[u8],
     linktargets: &FxHashMap<u32, u32>,
+    redirect_targets: &FxHashMap<u32, u32>,
     page_links: &mut FxHashMap<u32, Vec<u32>>,
+    redirects_passed: &mut FxHashMap<(u32, u32), u32>,
     skip_count_ns: &mut usize,
 ) {
     const PREFIX: &[u8] = b"INSERT INTO `pagelinks` VALUES (";
@@ -273,14 +294,15 @@ fn parse_line_bytes(
             )
         });
 
-        if let Some(mapped_target) = linktargets.get(&page_id_to) {
+        if let Some(mut mapped_target) = linktargets.get(&page_id_to) {
             // -------- Resolve redirect --------
-            // im going to allow redirects in the adjacency list for 2 reasons:
-            // 1. when i find a path, i want to know if a page is a redirect, and i can resolve while visiting the node during search
-            // 2.
-            // if let Some(redirect_target) = redirect_targets.get(mapped_target) {
-            //     mapped_target = redirect_target;
-            // }
+            // i take it back im going to NUKE REDIRECTS
+            // in the case a page has links to both a redirect and the redirect target,
+            // i will keep only one (the redirect will be logged in redirects_passed so itll replace it with the redirect one)
+            if let Some(redirect_target) = redirect_targets.get(mapped_target) {
+                redirects_passed.insert((page_id_from, *redirect_target), *mapped_target);
+                mapped_target = redirect_target;
+            }
             page_links
                 .entry(page_id_from)
                 .or_default()

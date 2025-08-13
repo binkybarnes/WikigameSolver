@@ -66,16 +66,18 @@ pub fn build_and_save_linktargets() -> anyhow::Result<()> {
 
 pub fn build_and_save_page_links() -> anyhow::Result<()> {
     let linktargets: FxHashMap<u32, u32> = util::load_from_file("data/linktargets.bin")?;
-    let (pagelinks_adjacency_list, incoming_pagelinks_adjacency_list): (
+    let redirect_targets: FxHashMap<u32, u32> = util::load_from_file("data/redirect_targets.bin")?;
+    let (pagelinks_adjacency_list, incoming_pagelinks_adjacency_list, redirects_passed): (
         FxHashMap<u32, Vec<u32>>,
         FxHashMap<u32, Vec<u32>>,
+        FxHashMap<(u32, u32), u32>,
     ) = pagelinks_parser::build_pagelinks(
         "../sql_files/enwiki-latest-pagelinks.sql.gz",
         &linktargets,
+        &redirect_targets,
     )?;
 
     println!("building csr");
-    let redirect_targets: FxHashMap<u32, u32> = util::load_from_file("data/redirect_targets.bin")?;
     let id_to_title: FxHashMap<u32, String> = util::load_from_file("data/id_to_title.bin")?;
     let pagelinks_csr: pagelinks_parser::CsrGraph = pagelinks_parser::build_csr_with_adjacency_list(
         &id_to_title,
@@ -84,6 +86,7 @@ pub fn build_and_save_page_links() -> anyhow::Result<()> {
         &redirect_targets,
     );
 
+    util::save_to_file(&redirects_passed, "data/redirects_passed.bin")?;
     util::save_to_file(
         &pagelinks_adjacency_list,
         "data/pagelinks_adjacency_list.bin",
@@ -104,11 +107,13 @@ fn main() -> anyhow::Result<()> {
     // build_and_save_page_maps()?;
     // build_and_save_redirect_targets()?;
     // build_and_save_linktargets()?;
-    // build_and_save_page_links()?;
+    build_and_save_page_links()?;
 
     let id_to_title: FxHashMap<u32, String> = util::load_from_file("data/id_to_title.bin")?;
     let title_to_id: FxHashMap<String, u32> = util::load_from_file("data/title_to_id.bin")?;
     let redirect_targets: FxHashMap<u32, u32> = util::load_from_file("data/redirect_targets.bin")?;
+    let redirects_passed: FxHashMap<(u32, u32), u32> =
+        util::load_from_file("data/redirects_passed.bin")?;
     let linktargets: FxHashMap<u32, u32> = util::load_from_file("data/linktargets.bin")?;
     let pagelinks_adjacency_list: FxHashMap<u32, Vec<u32>> =
         util::load_from_file("data/pagelinks_adjacency_list.bin")?;
@@ -139,6 +144,7 @@ fn main() -> anyhow::Result<()> {
         &pagelinks_adjacency_list,
         &incoming_pagelinks_adjacency_list,
         &redirect_targets,
+        &redirects_passed,
     );
 
     // loop {
