@@ -108,12 +108,12 @@ fn main() -> anyhow::Result<()> {
 
     let id_to_title: FxHashMap<u32, String> = util::load_from_file("data/id_to_title.bin")?;
     let title_to_id: FxHashMap<String, u32> = util::load_from_file("data/title_to_id.bin")?;
-    // let redirect_targets: FxHashMap<u32, u32> = util::load_from_file("data/redirect_targets.bin")?;
-    // let linktargets: FxHashMap<u32, u32> = util::load_from_file("data/linktargets.bin")?;
-    // let pagelinks_adjacency_list: FxHashMap<u32, Vec<u32>> =
-    //     util::load_from_file("data/pagelinks_adjacency_list.bin")?;
-    // let incoming_pagelinks_adjacency_list: FxHashMap<u32, Vec<u32>> =
-    //     util::load_from_file("data/incoming_pagelinks_adjacency_list.bin")?;
+    let redirect_targets: FxHashMap<u32, u32> = util::load_from_file("data/redirect_targets.bin")?;
+    let linktargets: FxHashMap<u32, u32> = util::load_from_file("data/linktargets.bin")?;
+    let pagelinks_adjacency_list: FxHashMap<u32, Vec<u32>> =
+        util::load_from_file("data/pagelinks_adjacency_list.bin")?;
+    let incoming_pagelinks_adjacency_list: FxHashMap<u32, Vec<u32>> =
+        util::load_from_file("data/incoming_pagelinks_adjacency_list.bin")?;
     let pagelinks_csr: pagelinks_parser::CsrGraph = util::load_from_file("data/pagelinks_csr.bin")?;
 
     println!("loaded");
@@ -135,9 +135,9 @@ fn main() -> anyhow::Result<()> {
         &title_to_id,
         &id_to_title,
         &pagelinks_csr,
-        // &pagelinks_adjacency_list,
-        // &incoming_pagelinks_adjacency_list,
-        // &redirect_targets,
+        &pagelinks_adjacency_list,
+        &incoming_pagelinks_adjacency_list,
+        &redirect_targets,
     );
 
     // loop {

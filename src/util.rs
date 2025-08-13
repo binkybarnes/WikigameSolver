@@ -178,42 +178,44 @@ pub fn run_interactive_session(
                     println!("Invalid page ID.");
                 }
             }
-        } else if input.starts_with("search ") {
-            // Parse two arguments: start_id and goal_id
-            let args: Vec<&str> = input["search ".len()..].split_whitespace().collect();
-            if args.len() != 2 {
-                println!("Usage: search <start_id> <goal_id>");
-            } else {
-                let start_res = args[0].parse::<u32>();
-                let goal_res = args[1].parse::<u32>();
+        }
+        // else if input.starts_with("search ") {
+        //     // Parse two arguments: start_id and goal_id
+        //     let args: Vec<&str> = input["search ".len()..].split_whitespace().collect();
+        //     if args.len() != 2 {
+        //         println!("Usage: search <start_id> <goal_id>");
+        //     } else {
+        //         let start_res = args[0].parse::<u32>();
+        //         let goal_res = args[1].parse::<u32>();
 
-                match (start_res, goal_res) {
-                    (Ok(start), Ok(goal)) => {
-                        let max_depth = 7; // or some reasonable default or configurable value
-                        match search::bfs_adj_list(
-                            &pagelinks_adjacency_list,
-                            &redirect_targets,
-                            start,
-                            goal,
-                            max_depth,
-                        ) {
-                            Some(path) => {
-                                println!("Path found (length {}): {:?}", path.len(), path);
-                            }
-                            None => {
-                                println!(
-                                    "No path found from {} to {} within depth {}",
-                                    start, goal, max_depth
-                                );
-                            }
-                        }
-                    }
-                    _ => {
-                        println!("Invalid start or goal page ID.");
-                    }
-                }
-            }
-        } else {
+        //         match (start_res, goal_res) {
+        //             (Ok(start), Ok(goal)) => {
+        //                 let max_depth = 7; // or some reasonable default or configurable value
+        //                 match search::bfs_adj_list(
+        //                     &pagelinks_adjacency_list,
+        //                     &redirect_targets,
+        //                     start,
+        //                     goal,
+        //                     max_depth,
+        //                 ) {
+        //                     Some(path) => {
+        //                         println!("Path found (length {}): {:?}", path.len(), path);
+        //                     }
+        //                     None => {
+        //                         println!(
+        //                             "No path found from {} to {} within depth {}",
+        //                             start, goal, max_depth
+        //                         );
+        //                     }
+        //                 }
+        //             }
+        //             _ => {
+        //                 println!("Invalid start or goal page ID.");
+        //             }
+        //         }
+        //     }
+        // }
+        else {
             println!("Unknown command. Try: lookup <title>, reverse <id>, redirect <id>, linktargets <linktarget id>, links <page_id>, search <start_id> <goal_id>, exit");
         }
     }
