@@ -40,6 +40,43 @@ fn process_neighbor(
     }
 }
 
+fn process_neighbor_bi(
+    neighbor: u32,
+    next_depth: u8,
+    next_combined_depth: u8,
+    meet_nodes: &mut Vec<u32>,
+    visited_depth: &mut FxHashMap<u32, u8>,
+    parents_this: &mut FxHashMap<u32, Vec<u32>>,
+    parents_other: &mut FxHashMap<u32, Vec<u32>>,
+    node: u32,
+    meet_found_at_depth: &mut Option<u8>,
+    queue: &mut VecDeque<(u32, u8)>,
+) {
+    match visited_depth.get(&neighbor) {
+        // Case 1: Never seen this neighbor before. This is a valid new path.
+        None => {
+            visited_depth.insert(neighbor, next_depth);
+            parents_this.insert(neighbor, vec![node]);
+            queue.push_back((neighbor, next_depth)); // now we can push here directly
+        }
+        // Case 2: Seen this neighbor before AT THE SAME DEPTH. This is a valid parallel path.
+        Some(&depth) if depth == next_depth => {
+            parents_this.get_mut(&neighbor).unwrap().push(node);
+        }
+        // Case 3: Seen this neighbor before at an earlier depth. This is a longer path or a cycle. Ignore it.
+        _ => (),
+    }
+
+    // check for meeting point
+    if parents_other.contains_key(&neighbor) {
+        if meet_found_at_depth.is_none() {
+            *meet_found_at_depth = Some(next_combined_depth);
+            println!("path found at depth {}", next_combined_depth);
+        }
+        meet_nodes.push(neighbor);
+    }
+}
+
 // ilisendipede something -> Leptorhynchoididae (redirect to target)
 pub fn bfs_adj_list(
     graph: &FxHashMap<u32, Vec<u32>>,
@@ -164,6 +201,7 @@ pub fn bi_bfs_adj_list(
 
     while !queue_fwd.is_empty() && !queue_bwd.is_empty() {
         let combined_depth = prev_depth_fwd + prev_depth_bwd;
+
         if let Some(depth) = meet_found_at_depth {
             if combined_depth >= depth {
                 break;
@@ -208,32 +246,22 @@ pub fn bi_bfs_adj_list(
         for _ in 0..level_size {
             let (node, current_depth) = queue.pop_front().unwrap();
             let next_depth = current_depth + 1;
+            let next_combined_depth = combined_depth + 1;
 
             if let Some(neighbors) = graph.get(&node) {
                 for &neighbor in neighbors {
-                    match visited_depth.get(&neighbor) {
-                        // Case 1: Never seen this neighbor before. This is a valid new path.
-                        None => {
-                            visited_depth.insert(neighbor, next_depth);
-                            parents_this.insert(neighbor, vec![node]);
-                            queue.push_back((neighbor, next_depth)); // now we can push here directly
-                        }
-                        // Case 2: Seen this neighbor before AT THE SAME DEPTH. This is a valid parallel path.
-                        Some(&depth) if depth == next_depth => {
-                            parents_this.get_mut(&neighbor).unwrap().push(node);
-                        }
-                        // Case 3: Seen this neighbor before at an earlier depth. This is a longer path or a cycle. Ignore it.
-                        _ => (),
-                    }
-                    // check for meeting point
-
-                    if parents_other.contains_key(&neighbor) {
-                        if meet_found_at_depth.is_none() {
-                            meet_found_at_depth = Some(combined_depth + 1);
-                            println!("path found at depth {}", combined_depth + 1);
-                        }
-                        meet_nodes.push(neighbor);
-                    }
+                    process_neighbor_bi(
+                        neighbor,
+                        next_depth,
+                        next_combined_depth,
+                        &mut meet_nodes,
+                        visited_depth,
+                        parents_this,
+                        parents_other,
+                        node,
+                        &mut meet_found_at_depth,
+                        queue,
+                    );
                 }
             }
         }
@@ -364,27 +392,6 @@ pub fn merge_all_paths(
 
     final_paths
 }
-
-// fn merge_paths(
-//     start: u32,
-//     goal: u32,
-//     meet: u32,
-//     parents_fwd: &FxHashMap<u32, Vec<u32>>,
-//     parents_bwd: &FxHashMap<u32, Vec<u32>>,
-//     redirects_fwd: &FxHashMap<(u32, u32), u32>,
-//     redirects_bwd: &FxHashMap<(u32, u32), u32>,
-// ) -> Vec<u32> {
-//     let mut path_fwd = reconstruct_all_paths(start, meet, parents_fwd, redirects_fwd, true, false);
-//     let path_bwd = reconstruct_all_paths(goal, meet, parents_bwd, redirects_bwd, true, true);
-
-//     // do not pop from path_fwd.pop(); if the meet point is supposed to be a redirect, it only gets put back in path_fwd
-//     // because for path_bwd the meet point is at the front which doesn't get changes
-//     // ex: Forward path: [1613879 Plastic_bag, 70691392 Phase-out_of_lightweight_plastic_bags] Backward path: [36080727 Plastic_bag_ban]
-
-//     // remove duplicate meet point (first element of path_bwd)
-//     path_fwd.extend(&path_bwd[1..]);
-//     path_fwd
-// }
 
 // fn bfs_csr(
 //     graph: &pagelinks_parser::CsrGraph,
