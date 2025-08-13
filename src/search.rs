@@ -45,30 +45,30 @@ fn process_neighbor_bi(
     next_depth: u8,
     next_combined_depth: u8,
     meet_nodes: &mut Vec<u32>,
-    visited_depth: &mut FxHashMap<u32, u8>,
-    parents_this: &mut FxHashMap<u32, Vec<u32>>,
-    parents_other: &mut FxHashMap<u32, Vec<u32>>,
+    visited_depth_this: &mut FxHashMap<u32, u8>,
+    visited_depth_other: &mut FxHashMap<u32, u8>,
+    parents: &mut FxHashMap<u32, Vec<u32>>,
     node: u32,
     meet_found_at_depth: &mut Option<u8>,
     queue: &mut VecDeque<(u32, u8)>,
 ) {
-    match visited_depth.get(&neighbor) {
+    match visited_depth_this.get(&neighbor) {
         // Case 1: Never seen this neighbor before. This is a valid new path.
         None => {
-            visited_depth.insert(neighbor, next_depth);
-            parents_this.insert(neighbor, vec![node]);
+            visited_depth_this.insert(neighbor, next_depth);
+            parents.insert(neighbor, vec![node]);
             queue.push_back((neighbor, next_depth)); // now we can push here directly
         }
         // Case 2: Seen this neighbor before AT THE SAME DEPTH. This is a valid parallel path.
         Some(&depth) if depth == next_depth => {
-            parents_this.get_mut(&neighbor).unwrap().push(node);
+            parents.get_mut(&neighbor).unwrap().push(node);
         }
         // Case 3: Seen this neighbor before at an earlier depth. This is a longer path or a cycle. Ignore it.
         _ => (),
     }
 
     // check for meeting point
-    if parents_other.contains_key(&neighbor) {
+    if visited_depth_other.contains_key(&neighbor) {
         if meet_found_at_depth.is_none() {
             *meet_found_at_depth = Some(next_combined_depth);
             println!("path found at depth {}", next_combined_depth);
@@ -216,13 +216,13 @@ pub fn bi_bfs_adj_list(
             return None;
         }
 
-        let (queue, parents_this, parents_other, visited_depth, depth, graph, backwards) =
+        let (queue, parents, visited_depth_this, visited_depth_other, depth, graph, backwards) =
             if queue_fwd.len() <= queue_bwd.len() {
                 (
                     &mut queue_fwd,
                     &mut parents_fwd,
-                    &mut parents_bwd,
                     &mut visited_depth_fwd,
+                    &mut visited_depth_bwd,
                     &mut depth_fwd,
                     graph_fwd,
                     false,
@@ -231,8 +231,8 @@ pub fn bi_bfs_adj_list(
                 (
                     &mut queue_bwd,
                     &mut parents_bwd,
-                    &mut parents_fwd,
                     &mut visited_depth_bwd,
+                    &mut visited_depth_fwd,
                     &mut depth_bwd,
                     graph_bwd,
                     true,
@@ -259,9 +259,9 @@ pub fn bi_bfs_adj_list(
                         next_depth,
                         next_combined_depth,
                         &mut meet_nodes,
-                        visited_depth,
-                        parents_this,
-                        parents_other,
+                        visited_depth_this,
+                        visited_depth_other,
+                        parents,
                         node,
                         &mut meet_found_at_depth,
                         queue,
@@ -397,89 +397,225 @@ pub fn merge_all_paths(
     final_paths
 }
 
-// fn bfs_csr(
-//     graph: &pagelinks_parser::CsrGraph,
-//     redirects_passed: &FxHashMap<(u32, u32), u32>,
-//     orig_start: u32,
-//     orig_goal: u32,
-//     max_depth: u8,
-//     backwards: bool,
-// ) -> Option<Vec<Vec<u32>>> {
-//     let now = Instant::now();
+pub fn bfs_csr(
+    graph: &pagelinks_parser::CsrGraph,
+    orig_start: u32,
+    orig_goal: u32,
+    max_depth: u8,
+    backwards: bool,
+) -> Option<Vec<Vec<u32>>> {
+    let now = Instant::now();
 
-//     let mut start = graph.orig_to_dense.get(&orig_start).copied()?;
-//     let mut goal = graph.orig_to_dense.get(&orig_goal).copied()?;
+    // DO NOT PASS IN REDIRECTS AS START AND GOAL
+    let (mut start, mut goal) = if backwards {
+        (orig_goal, orig_start)
+    } else {
+        (orig_start, orig_goal)
+    };
 
-//     // DO NOT PASS IN REDIRECTS AS START AND GOAL
+    start = graph.orig_to_dense.get(&start).copied()?;
+    goal = graph.orig_to_dense.get(&goal).copied()?;
 
-//     let (start, goal) = if backwards {
-//         (orig_goal, orig_start)
-//     } else {
-//         (orig_start, orig_goal)
-//     };
+    // case where start is same as goal (can happen when the start is a redirect to the goal)
+    if start == goal {
+        return Some(vec![vec![start]]);
+    }
 
-//     // case where start is same as goal (can happen when the start is a redirect to the goal)
-//     if start == goal {
-//         return Some(vec![vec![start]]);
-//     }
+    let mut queue = VecDeque::new();
+    // going to make it so a node can have multiple parents (for multiple shortest paths)
+    let mut parents: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
+    // now that a node can have multiple parents, i have to make sure the neighbors are on the same depth, or there will be a loop
+    let mut visited_depth: FxHashMap<u32, u8> = FxHashMap::default();
 
-//     let mut queue = VecDeque::new();
-//     // going to make it so a node can have multiple parents (for multiple shortest paths)
-//     let mut parents: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
-//     // now that a node can have multiple parents, i have to make sure the neighbors are on the same depth, or there will be a loop
-//     let mut visited_depth: FxHashMap<u32, u8> = FxHashMap::default();
+    queue.push_back((start, 0));
+    visited_depth.insert(start, 0);
 
-//     queue.push_back((start, 0));
-//     visited_depth.insert(start, 0);
+    let mut goal_found_at_depth: Option<u8> = None;
+    let mut depth = 0;
 
-//     let mut goal_found_at_depth: Option<u8> = None;
-//     let mut prev_depth = 0;
+    while !queue.is_empty() {
+        // If we have already found the goal, finish this depth and then stop
+        if let Some(goal_depth) = goal_found_at_depth {
+            if depth >= goal_depth {
+                break;
+            }
+        }
 
-//     while !queue.is_empty() {
-//         println!("Depth {}", depth);
-//         if depth >= max_depth {
-//             println!("MAX DEPTH REACHED");
-//             return None;
-//         }
+        // Check max depth
+        if depth >= max_depth {
+            println!("MAX DEPTH REACHED");
+            return None;
+        }
 
-//         let level_size = queue.len();
-//         for _ in 0..level_size {
-//             let node = queue.pop_front().unwrap();
+        depth += 1;
+        println!("Depth {}", depth);
 
-//             let neighbors = graph.get(node);
-//             for &raw_neighbor in neighbors {
-//                 let neighbor = if let Some(redirect_target) = graph.resolve_redirect(raw_neighbor) {
-//                     redirects_passed.insert((node, redirect_target), raw_neighbor);
-//                     redirect_target
-//                 } else {
-//                     raw_neighbor
-//                 };
+        let level_size = queue.len();
+        for _ in 0..level_size {
+            let (node, current_depth) = queue.pop_front().unwrap();
+            let next_depth = current_depth + 1;
 
-//                 if !parents.contains_key(&neighbor) {
-//                     parents.insert(neighbor, node);
-//                     if neighbor == goal {
-//                         let elapsed = now.elapsed();
-//                         println!("Elapsed: {:.2?}", elapsed);
-//                         return Some(reconstruct_path_csr(
-//                             start,
-//                             goal,
-//                             &parents,
-//                             &redirects_passed,
-//                             &graph.dense_to_orig,
-//                             true,
-//                             false,
-//                         ));
-//                     }
-//                     queue.push_back(neighbor);
-//                 }
-//             }
-//         }
+            let neighbors = if backwards {
+                graph.get_reverse(node)
+            } else {
+                graph.get(node)
+            };
 
-//         depth += 1;
-//     }
+            for &neighbor in neighbors {
+                process_neighbor(
+                    neighbor,
+                    next_depth,
+                    goal,
+                    &mut visited_depth,
+                    &mut parents,
+                    node,
+                    &mut goal_found_at_depth,
+                    &mut queue,
+                );
+            }
+        }
+    }
 
-//     None
-// }
+    if goal_found_at_depth.is_some() {
+        let elapsed = now.elapsed();
+        println!("Elapsed: {:.2?}", elapsed);
+        return Some(reconstruct_all_paths_csr(
+            start,
+            goal,
+            &parents,
+            &graph.redirects_passed,
+            &graph.dense_to_orig,
+            true,
+            backwards,
+        ));
+    }
+
+    None
+}
+
+pub fn bi_bfs_csr(
+    graph: &pagelinks_parser::CsrGraph,
+    orig_start: u32,
+    orig_goal: u32,
+    max_depth: u8,
+) -> Option<Vec<Vec<u32>>> {
+    let now = Instant::now();
+
+    let start = graph.orig_to_dense.get(&orig_start).copied()?;
+    let goal = graph.orig_to_dense.get(&orig_goal).copied()?;
+
+    // case where start is same as goal (can happen when the start is a redirect to the goal)
+    if start == goal {
+        return Some(vec![vec![start]]);
+    }
+
+    let mut queue_fwd = VecDeque::new();
+    let mut queue_bwd = VecDeque::new();
+    let mut parents_fwd: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
+    let mut parents_bwd: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
+    let mut visited_depth_fwd: FxHashMap<u32, u8> = FxHashMap::default();
+    let mut visited_depth_bwd: FxHashMap<u32, u8> = FxHashMap::default();
+
+    visited_depth_fwd.insert(start, 0);
+    visited_depth_bwd.insert(goal, 0);
+
+    queue_fwd.push_back((start, 0));
+    queue_bwd.push_back((goal, 0));
+
+    let mut meet_nodes: Vec<u32> = Vec::new();
+    let mut meet_found_at_depth: Option<u8> = None;
+
+    let mut depth_fwd = 0;
+    let mut depth_bwd = 0;
+
+    while !queue_fwd.is_empty() && !queue_bwd.is_empty() {
+        let combined_depth = depth_fwd + depth_bwd;
+
+        if let Some(meet_depth) = meet_found_at_depth {
+            if combined_depth >= meet_depth {
+                break;
+            }
+        }
+        // Check max depth
+        if combined_depth >= max_depth {
+            println!("MAX DEPTH REACHED");
+            return None;
+        }
+
+        let (queue, parents, visited_depth_this, visited_depth_other, depth, backwards) =
+            if queue_fwd.len() <= queue_bwd.len() {
+                (
+                    &mut queue_fwd,
+                    &mut parents_fwd,
+                    &mut visited_depth_fwd,
+                    &mut visited_depth_bwd,
+                    &mut depth_fwd,
+                    false,
+                )
+            } else {
+                (
+                    &mut queue_bwd,
+                    &mut parents_bwd,
+                    &mut visited_depth_bwd,
+                    &mut visited_depth_fwd,
+                    &mut depth_bwd,
+                    true,
+                )
+            };
+
+        *depth += 1;
+        println!(
+            "Depth {} {}",
+            if backwards { "backwards" } else { "forwards" },
+            depth
+        );
+
+        let level_size = queue.len();
+        for _ in 0..level_size {
+            let (node, current_depth) = queue.pop_front().unwrap();
+            let next_depth = current_depth + 1;
+            let next_combined_depth = combined_depth + 1;
+
+            let neighbors = if backwards {
+                graph.get_reverse(node)
+            } else {
+                graph.get(node)
+            };
+
+            for &neighbor in neighbors {
+                process_neighbor_bi(
+                    neighbor,
+                    next_depth,
+                    next_combined_depth,
+                    &mut meet_nodes,
+                    visited_depth_this,
+                    visited_depth_other,
+                    parents,
+                    node,
+                    &mut meet_found_at_depth,
+                    queue,
+                );
+            }
+        }
+    }
+
+    if meet_found_at_depth.is_some() {
+        let elapsed = now.elapsed();
+        println!("Elapsed: {:.2?}", elapsed);
+        return Some(merge_all_paths_csr(
+            start,
+            &meet_nodes,
+            goal,
+            &parents_fwd,
+            &parents_bwd,
+            &graph.redirects_passed,
+            &graph.dense_to_orig,
+            true,
+        ));
+    }
+
+    None
+}
 
 // fn bfs_csr_backwards(
 //     graph: &pagelinks_parser::CsrGraph,
@@ -742,31 +878,67 @@ pub fn merge_all_paths(
 //     None
 // }
 
-// pub fn reconstruct_path_csr(
-//     start: u32,
-//     goal: u32,
-//     parents: &FxHashMap<u32, u32>,
-//     redirects_passed: &FxHashMap<(u32, u32), u32>,
-//     dense_to_orig: &Vec<u32>,
-//     return_redirects: bool,
-//     reverse: bool,
-// ) -> Vec<u32> {
-//     let path = reconstruct_path(
-//         start,
-//         goal,
-//         parents,
-//         redirects_passed,
-//         return_redirects,
-//         reverse,
-//     );
+pub fn reconstruct_all_paths_csr(
+    start: u32,
+    goal: u32,
+    parents: &FxHashMap<u32, Vec<u32>>,
+    redirects_passed: &FxHashMap<(u32, u32), u32>,
+    dense_to_orig: &Vec<u32>,
+    return_redirects: bool,
+    reverse: bool,
+) -> Vec<Vec<u32>> {
+    let all_paths = reconstruct_all_paths(
+        start,
+        goal,
+        parents,
+        redirects_passed,
+        return_redirects,
+        reverse,
+    );
 
-//     let orig_path: Vec<u32> = path
-//         .into_iter()
-//         .map(|node| dense_to_orig[node as usize])
-//         .collect();
+    let orig_all_paths = all_paths
+        .into_iter()
+        .map(|path| {
+            path.into_iter()
+                .map(|node| dense_to_orig[node as usize])
+                .collect()
+        })
+        .collect();
 
-//     return orig_path;
-// }
+    return orig_all_paths;
+}
+
+pub fn merge_all_paths_csr(
+    start: u32,
+    meet_nodes: &Vec<u32>,
+    goal: u32,
+    parents_fwd: &FxHashMap<u32, Vec<u32>>,
+    parents_bwd: &FxHashMap<u32, Vec<u32>>,
+    redirects_passed: &FxHashMap<(u32, u32), u32>,
+    dense_to_orig: &Vec<u32>,
+    return_redirects: bool,
+) -> Vec<Vec<u32>> {
+    let all_paths = merge_all_paths(
+        start,
+        meet_nodes,
+        goal,
+        parents_fwd,
+        parents_bwd,
+        redirects_passed,
+        return_redirects,
+    );
+
+    let orig_all_paths = all_paths
+        .into_iter()
+        .map(|path| {
+            path.into_iter()
+                .map(|node| dense_to_orig[node as usize])
+                .collect()
+        })
+        .collect();
+
+    return orig_all_paths;
+}
 
 // pub fn reconstruct_path_csr_backwards(
 //     start: u32,
@@ -903,103 +1075,103 @@ pub fn bfs_interactive_session(
 
         let max_depth = 50;
 
-        println!("\nRunning forwards BFS on adjacency list graph...");
-        let now = Instant::now();
-        let paths_adj_fwd = bfs_adj_list(
-            adj_graph,
-            redirects_passed,
-            start_id,
-            goal_id,
-            max_depth,
-            false,
-        );
-        let elapsed_fwd = now.elapsed();
+        // println!("\nRunning forwards BFS on adjacency list graph...");
+        // let now = Instant::now();
+        // let paths_adj_fwd = bfs_adj_list(
+        //     adj_graph,
+        //     redirects_passed,
+        //     start_id,
+        //     goal_id,
+        //     max_depth,
+        //     false,
+        // );
+        // let elapsed_fwd = now.elapsed();
 
-        match &paths_adj_fwd {
-            Some(paths) if !paths.is_empty() => {
-                println!(
-                    "Paths found (adjacency list) [{} shortest paths, {:.2?}]:",
-                    paths.len(),
-                    elapsed_fwd
-                );
-                let path = &paths[0];
-                println!("Path 1 ({} nodes):", path.len());
-                for id in path {
-                    let title = id_to_title
-                        .get(id)
-                        .map(String::as_str)
-                        .unwrap_or("[Unknown]");
-                    print!("{} -> ", title);
-                }
-                println!("END");
-            }
-            _ => println!(
-                "No path found in adjacency list BFS (after {:.2?}).",
-                elapsed_fwd
-            ),
-        }
+        // match &paths_adj_fwd {
+        //     Some(paths) if !paths.is_empty() => {
+        //         println!(
+        //             "Paths found (adjacency list) [{} shortest paths, {:.2?}]:",
+        //             paths.len(),
+        //             elapsed_fwd
+        //         );
+        //         let path = &paths[0];
+        //         println!("Path 1 ({} nodes):", path.len());
+        //         for id in path {
+        //             let title = id_to_title
+        //                 .get(id)
+        //                 .map(String::as_str)
+        //                 .unwrap_or("[Unknown]");
+        //             print!("{} -> ", title);
+        //         }
+        //         println!("END");
+        //     }
+        //     _ => println!(
+        //         "No path found in adjacency list BFS (after {:.2?}).",
+        //         elapsed_fwd
+        //     ),
+        // }
 
-        println!("\nRunning backwards BFS on adjacency list graph...");
-        let now = Instant::now();
-        let paths_adj_bwd = bfs_adj_list(
-            adj_graph_bwd,
-            redirects_passed,
-            start_id,
-            goal_id,
-            max_depth,
-            true,
-        );
-        let elapsed_bwd = now.elapsed();
+        // println!("\nRunning backwards BFS on adjacency list graph...");
+        // let now = Instant::now();
+        // let paths_adj_bwd = bfs_adj_list(
+        //     adj_graph_bwd,
+        //     redirects_passed,
+        //     start_id,
+        //     goal_id,
+        //     max_depth,
+        //     true,
+        // );
+        // let elapsed_bwd = now.elapsed();
 
-        match &paths_adj_bwd {
-            Some(paths) if !paths.is_empty() => {
-                println!(
-                    "Paths found (adjacency list) [{} shortest paths, {:.2?}]:",
-                    paths.len(),
-                    elapsed_bwd
-                );
-                let path = &paths[0];
-                println!("Path 1 ({} nodes):", path.len());
-                for id in path {
-                    let title = id_to_title
-                        .get(id)
-                        .map(String::as_str)
-                        .unwrap_or("[Unknown]");
-                    print!("{} -> ", title);
-                }
-                println!("END");
-            }
-            _ => println!(
-                "No path found in adjacency list BFS (after {:.2?}).",
-                elapsed_bwd
-            ),
-        }
-        if let (Some(fwd), Some(bwd)) = (paths_adj_fwd.clone(), paths_adj_bwd.clone()) {
-            let fwd_set = paths_to_strings(&fwd, id_to_title);
-            let bwd_set = paths_to_strings(&bwd, id_to_title);
+        // match &paths_adj_bwd {
+        //     Some(paths) if !paths.is_empty() => {
+        //         println!(
+        //             "Paths found (adjacency list) [{} shortest paths, {:.2?}]:",
+        //             paths.len(),
+        //             elapsed_bwd
+        //         );
+        //         let path = &paths[0];
+        //         println!("Path 1 ({} nodes):", path.len());
+        //         for id in path {
+        //             let title = id_to_title
+        //                 .get(id)
+        //                 .map(String::as_str)
+        //                 .unwrap_or("[Unknown]");
+        //             print!("{} -> ", title);
+        //         }
+        //         println!("END");
+        //     }
+        //     _ => println!(
+        //         "No path found in adjacency list BFS (after {:.2?}).",
+        //         elapsed_bwd
+        //     ),
+        // }
+        // if let (Some(fwd), Some(bwd)) = (paths_adj_fwd.clone(), paths_adj_bwd.clone()) {
+        //     let fwd_set = paths_to_strings(&fwd, id_to_title);
+        //     let bwd_set = paths_to_strings(&bwd, id_to_title);
 
-            println!("\nForward BFS found {} shortest paths", fwd_set.len());
-            println!("Backward BFS found {} shortest paths", bwd_set.len());
+        //     println!("\nForward BFS found {} shortest paths", fwd_set.len());
+        //     println!("Backward BFS found {} shortest paths", bwd_set.len());
 
-            let only_in_fwd: HashSet<_> = fwd_set.difference(&bwd_set).collect();
-            let only_in_bwd: HashSet<_> = bwd_set.difference(&fwd_set).collect();
+        //     let only_in_fwd: HashSet<_> = fwd_set.difference(&bwd_set).collect();
+        //     let only_in_bwd: HashSet<_> = bwd_set.difference(&fwd_set).collect();
 
-            println!("Paths only in forward BFS: {}", only_in_fwd.len());
-            print_path_examples(
-                &only_in_fwd.iter().cloned().cloned().collect(),
-                "Only in Forward",
-                10,
-            );
+        //     println!("Paths only in forward BFS: {}", only_in_fwd.len());
+        //     print_path_examples(
+        //         &only_in_fwd.iter().cloned().cloned().collect(),
+        //         "Only in Forward",
+        //         10,
+        //     );
 
-            println!("Paths only in backward BFS: {}", only_in_bwd.len());
-            print_path_examples(
-                &only_in_bwd.iter().cloned().cloned().collect(),
-                "Only in Backward",
-                10,
-            );
-        } else {
-            println!("One or both BFS searches did not find paths, skipping comparison.");
-        }
+        //     println!("Paths only in backward BFS: {}", only_in_bwd.len());
+        //     print_path_examples(
+        //         &only_in_bwd.iter().cloned().cloned().collect(),
+        //         "Only in Backward",
+        //         10,
+        //     );
+        // } else {
+        //     println!("One or both BFS searches did not find paths, skipping comparison.");
+        // }
 
         println!("\nRunning bidirectional BFS on adjacency list graph...");
         let now = Instant::now();
@@ -1037,80 +1209,83 @@ pub fn bfs_interactive_session(
             ),
         }
 
-        // println!("\nRunning BFS on CSR graph...");
+        // println!("\nRunning forwards BFS on CSR graph...");
         // let now = Instant::now();
-        // let path_csr = bfs_csr(csr_graph, start_id, goal_id, max_depth);
-        // let elapsed_csr = now.elapsed();
+        // let paths_adj_fwd = bfs_csr(csr_graph, start_id, goal_id, max_depth, false);
+        // let elapsed_fwd = now.elapsed();
 
-        // match path_csr {
-        //     Some(path) => {
+        // match &paths_adj_fwd {
+        //     Some(paths) if !paths.is_empty() => {
         //         println!(
-        //             "Path found (CSR) [{} nodes, {:.2?}]:",
-        //             path.len(),
-        //             elapsed_csr
+        //             "Paths found (csr) [{} shortest paths, {:.2?}]:",
+        //             paths.len(),
+        //             elapsed_fwd
         //         );
+        //         let path = &paths[0];
+        //         println!("Path 1 ({} nodes):", path.len());
         //         for id in path {
         //             let title = id_to_title
-        //                 .get(&id)
+        //                 .get(id)
         //                 .map(String::as_str)
         //                 .unwrap_or("[Unknown]");
         //             print!("{} -> ", title);
         //         }
         //         println!("END");
         //     }
-        //     None => println!("No path found in CSR BFS (after {:.2?}).", elapsed_csr),
+        //     _ => println!("No path found in CSR BFS (after {:.2?}).", elapsed_fwd),
         // }
 
-        // println!("\nRunning backwards BFS on csr...");
+        // println!("\nRunning backwards BFS on CSR graph...");
         // let now = Instant::now();
-        // let path_adj = bfs_csr_backwards(csr_graph, start_id, goal_id, max_depth);
-        // let elapsed_adj = now.elapsed();
+        // let paths_adj_fwd = bfs_csr(csr_graph, start_id, goal_id, max_depth, true);
+        // let elapsed_fwd = now.elapsed();
 
-        // match path_adj {
-        //     Some(path) => {
+        // match &paths_adj_fwd {
+        //     Some(paths) if !paths.is_empty() => {
         //         println!(
-        //             "Path found (csr) [{} nodes, {:.2?}]:",
-        //             path.len(),
-        //             elapsed_adj
+        //             "Paths found (csr) [{} shortest paths, {:.2?}]:",
+        //             paths.len(),
+        //             elapsed_fwd
         //         );
+        //         let path = &paths[0];
+        //         println!("Path 1 ({} nodes):", path.len());
         //         for id in path {
         //             let title = id_to_title
-        //                 .get(&id)
+        //                 .get(id)
         //                 .map(String::as_str)
         //                 .unwrap_or("[Unknown]");
         //             print!("{} -> ", title);
         //         }
         //         println!("END");
         //     }
-        //     None => println!("No path found in csr BFS (after {:.2?}).", elapsed_adj),
+        //     _ => println!("No path found in CSR BFS (after {:.2?}).", elapsed_fwd),
         // }
 
-        // // Bidirectional BFS csr
-        // println!("\nRunning Bidirectional BFS on CSR graph...");
-        // let now = Instant::now();
-        // let path_bi_adj = bi_bfs_csr(csr_graph, start_id, goal_id, max_depth);
-        // let elapsed_bi_adj = now.elapsed();
-        // match path_bi_adj {
-        //     Some(path) => {
-        //         println!(
-        //             "Path found (Bidirectional csr) [{} nodes, {:.2?}]:",
-        //             path.len(),
-        //             elapsed_bi_adj
-        //         );
-        //         for id in path {
-        //             let title = id_to_title
-        //                 .get(&id)
-        //                 .map(String::as_str)
-        //                 .unwrap_or("[Unknown]");
-        //             print!("{} -> ", title);
-        //         }
-        //         println!("END");
-        //     }
-        //     None => println!(
-        //         "No path found in Bidirectional csr BFS (after {:.2?}).",
-        //         elapsed_bi_adj
-        //     ),
-        // }
+        println!("\nRunning bidirectional BFS on CSR graph...");
+        let now = Instant::now();
+        let paths_adj_fwd = bi_bfs_csr(csr_graph, start_id, goal_id, max_depth);
+        let elapsed_fwd = now.elapsed();
+
+        match &paths_adj_fwd {
+            Some(paths) if !paths.is_empty() => {
+                println!(
+                    "Paths found (csr) [{} shortest paths, {:.2?}]:",
+                    paths.len(),
+                    elapsed_fwd
+                );
+                let path = &paths[0];
+                println!("Path 1 ({} nodes):", path.len());
+                for id in path {
+                    let title = id_to_title
+                        .get(id)
+                        .map(String::as_str)
+                        .unwrap_or("[Unknown]");
+                    print!("{} -> ", title);
+                }
+                println!("END");
+            }
+            _ => println!("No path found in CSR BFS (after {:.2?}).", elapsed_fwd),
+        }
 
         println!("\n----------------------------\n");
     }

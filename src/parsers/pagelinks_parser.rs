@@ -17,8 +17,8 @@ pub struct CsrGraph {
     // page_ids are sparse, so map each page_id to 1, 2, ...
     pub orig_to_dense: FxHashMap<u32, u32>,
     pub dense_to_orig: Vec<u32>,
-    // used in bfs_csr
-    pub redirect_targets_dense: Vec<u32>,
+    // used in reconstruct path after bfs
+    pub redirects_passed: FxHashMap<(u32, u32), u32>,
 }
 impl CsrGraph {
     pub fn get(&self, dense_node: u32) -> &[u32] {
@@ -31,23 +31,6 @@ impl CsrGraph {
         let end = self.reverse_offsets[dense_node as usize + 1] as usize;
         &self.reverse_edges[start..end]
     }
-
-    // pub fn get_by_orig(&self, orig_id: u32) -> Option<&[u32]> {
-    //     self.orig_to_dense
-    //         .get(&orig_id)
-    //         .map(|&dense_idx| self.get(dense_idx))
-    // }
-
-    // if the given page is a redirect return its target, else return the same
-    pub fn resolve_redirect(&self, dense_node: u32) -> Option<u32> {
-        let redirect = self.redirect_targets_dense[dense_node as usize];
-        if redirect != u32::MAX {
-            // the empty value for redirect_targets_dense
-            Some(redirect)
-        } else {
-            None
-        }
-    }
 }
 
 // since some pages don't have links, those ids won't be in the adjacency list
@@ -56,7 +39,7 @@ pub fn build_csr_with_adjacency_list(
     id_to_title: &FxHashMap<u32, String>,
     adjacency_list: &FxHashMap<u32, Vec<u32>>,
     reverse_adjacency_list: &FxHashMap<u32, Vec<u32>>,
-    redirect_targets: &FxHashMap<u32, u32>,
+    redirects_passed: &FxHashMap<(u32, u32), u32>,
 ) -> CsrGraph {
     // terminology: if apple -> banana, apple is the row title, banana is column
     let hasher = FxBuildHasher::default();
@@ -102,22 +85,29 @@ pub fn build_csr_with_adjacency_list(
     }
 
     // translate redirect targets
+    let mut redirects_passed_dense: FxHashMap<(u32, u32), u32> = FxHashMap::default();
     let mut skip_count = 0;
-    let mut redirect_targets_dense: Vec<u32> = vec![u32::MAX; orig_to_dense.len()];
-    for (rd_from, rd_to) in redirect_targets {
-        if let (Some(&dense_from), Some(&dense_to)) =
-            (orig_to_dense.get(rd_from), orig_to_dense.get(rd_to))
-        {
-            redirect_targets_dense[dense_from as usize] = dense_to;
+    for (&(from_orig, to_orig), &redirect_orig) in redirects_passed.iter() {
+        if let (Some(&from_dense), Some(&to_dense), Some(&redirect_dense)) = (
+            orig_to_dense.get(&from_orig),
+            orig_to_dense.get(&to_orig),
+            orig_to_dense.get(&redirect_orig),
+        ) {
+            redirects_passed_dense.insert((from_dense, to_dense), redirect_dense);
         } else {
             skip_count += 1;
         }
     }
-    println!("skipped {}", skip_count);
+
+    println!(
+        "Skipped {} redirects that could not be translated to dense IDs",
+        skip_count
+    );
+
     println!(
         "redirect target dense len: {}, redirect targets len: {}",
-        redirect_targets_dense.len(),
-        redirect_targets.len()
+        redirects_passed_dense.len(),
+        redirects_passed.len()
     );
     CsrGraph {
         offsets,
@@ -126,7 +116,7 @@ pub fn build_csr_with_adjacency_list(
         reverse_edges,
         orig_to_dense,
         dense_to_orig,
-        redirect_targets_dense,
+        redirects_passed: redirects_passed_dense,
     }
 }
 

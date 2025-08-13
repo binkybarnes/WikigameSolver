@@ -83,7 +83,7 @@ pub fn build_and_save_page_links() -> anyhow::Result<()> {
         &id_to_title,
         &pagelinks_adjacency_list,
         &incoming_pagelinks_adjacency_list,
-        &redirect_targets,
+        &redirects_passed,
     );
 
     util::save_to_file(&redirects_passed, "data/redirects_passed.bin")?;
