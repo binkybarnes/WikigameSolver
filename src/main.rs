@@ -128,6 +128,7 @@ fn main() -> anyhow::Result<()> {
     //     &redirect_targets,
     //     &linktargets,
     //     &pagelinks_adjacency_list,
+    //     &incoming_pagelinks_adjacency_list,
     //     &pagelinks_csr,
     // )?;
 

@@ -89,6 +89,7 @@ pub fn run_interactive_session(
     redirect_targets: &FxHashMap<u32, u32>,
     linktargets: &FxHashMap<u32, u32>,
     pagelinks_adjacency_list: &FxHashMap<u32, Vec<u32>>,
+    incoming_pagelinks_adjacency_list: &FxHashMap<u32, Vec<u32>>,
     pagelinks_csr: &pagelinks_parser::CsrGraph,
 ) -> anyhow::Result<()> {
     loop {
@@ -173,6 +174,44 @@ pub fn run_interactive_session(
                     } else {
                         println!("Page ID {} not found in CSR graph", page_id);
                     }
+                }
+                Err(_) => {
+                    println!("Invalid page ID.");
+                }
+            }
+        } else if input.starts_with("incoming links ") {
+            let page_id_res = input
+                .strip_prefix("incoming links ")
+                .unwrap()
+                .parse::<u32>();
+            match page_id_res {
+                Ok(page_id) => {
+                    // Print neighbors from hashmap adjacency list
+                    match incoming_pagelinks_adjacency_list.get(&page_id) {
+                        Some(neighbors) => {
+                            println!("HashMap neighbors ({}): {:?}", neighbors.len(), neighbors);
+                        }
+                        None => {
+                            println!("No neighbors found in HashMap for page ID {}", page_id);
+                        }
+                    }
+
+                    // // Print neighbors from CSR graph if provided
+
+                    // if let Some(&dense_idx) = pagelinks_csr.orig_to_dense.get(&page_id) {
+                    //     let dense_neighbors = pagelinks_csr.get(dense_idx);
+                    //     let orig_neighbors: Vec<u32> = dense_neighbors
+                    //         .iter()
+                    //         .map(|&dense_n| pagelinks_csr.dense_to_orig[dense_n as usize])
+                    //         .collect();
+                    //     println!(
+                    //         "CSR neighbors ({}): {:?}",
+                    //         orig_neighbors.len(),
+                    //         orig_neighbors
+                    //     );
+                    // } else {
+                    //     println!("Page ID {} not found in CSR graph", page_id);
+                    // }
                 }
                 Err(_) => {
                     println!("Invalid page ID.");

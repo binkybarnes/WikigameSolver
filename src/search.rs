@@ -11,7 +11,7 @@ use crate::parsers::pagelinks_parser;
 fn process_neighbor(
     neighbor: u32,
     next_depth: u8,
-    goal: u32,
+    target: u32,
     visited_depth: &mut FxHashMap<u32, u8>,
     parents: &mut FxHashMap<u32, Vec<u32>>,
     node: u32,
@@ -19,18 +19,27 @@ fn process_neighbor(
     queue: &mut VecDeque<(u32, u8)>,
 ) {
     match visited_depth.get(&neighbor) {
+        // Case 1: Never seen this neighbor before. This is a valid new path.
         None => {
             visited_depth.insert(neighbor, next_depth);
             parents.insert(neighbor, vec![node]);
             queue.push_back((neighbor, next_depth)); // now we can push here directly
         }
+        // Case 2: Seen this neighbor before AT THE SAME DEPTH. This is a valid parallel path.
         Some(&depth) if depth == next_depth => {
+            // its possible when has both page -> redirect neighbor and page -> neighbor
+            // you can add a check here to prevent duplicate or remove duplicates in reconstruct
+            // let parents_for_neighbor = parents.get_mut(&neighbor).unwrap();
+            // if !parents_for_neighbor.contains(&node) {
+            //     parents_for_neighbor.push(node);
+            // }
             parents.get_mut(&neighbor).unwrap().push(node);
         }
+        // Case 3: Seen this neighbor before at an earlier depth. This is a longer path or a cycle. Ignore it.
         _ => (),
     }
 
-    if neighbor == goal && goal_found_at_depth.is_none() {
+    if neighbor == target && goal_found_at_depth.is_none() {
         println!("path found at depth {}", next_depth);
         *goal_found_at_depth = Some(next_depth);
     }
@@ -102,7 +111,16 @@ pub fn bfs_adj_list(
                 } else {
                     raw_neighbor
                 };
-
+                process_neighbor(
+                    neighbor,
+                    next_depth,
+                    goal,
+                    &mut visited_depth,
+                    &mut parents,
+                    node,
+                    &mut goal_found_at_depth,
+                    &mut queue,
+                );
                 // match visited_depth.get(&neighbor) {
                 //     // Case 1: Never seen this neighbor before. This is a valid new path.
                 //     None => {
@@ -124,16 +142,6 @@ pub fn bfs_adj_list(
                 //         goal_found_at_depth = Some(next_depth);
                 //     }
                 // }
-                process_neighbor(
-                    neighbor,
-                    next_depth,
-                    goal,
-                    &mut visited_depth,
-                    &mut parents,
-                    node,
-                    &mut goal_found_at_depth,
-                    &mut queue,
-                );
             }
         }
     }
@@ -154,181 +162,114 @@ pub fn bfs_adj_list(
     None
 }
 
-// pub fn bfs_adj_list_backwards(
-//     graph: &FxHashMap<u32, Vec<u32>>,
-//     redirect_targets: &FxHashMap<u32, u32>,
-//     orig_start: u32,
-//     orig_goal: u32,
-//     max_depth: u8,
-// ) -> Option<Vec<Vec<u32>>> {
-//     let now = Instant::now();
-
-//     let start = redirect_targets
-//         .get(&orig_start)
-//         .copied()
-//         .unwrap_or(orig_start);
-//     let goal = redirect_targets
-//         .get(&orig_goal)
-//         .copied()
-//         .unwrap_or(orig_goal);
-
-//     // case where start is same as goal (can happen when the start is a redirect to the goal)
-//     if start == goal {
-//         return Some(vec![vec![orig_goal]]);
-//     }
-
-//     let mut queue = VecDeque::new();
-//     // going to make it so a node can have multiple parents (for multiple shortest paths)
-//     let mut parents: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
-//     // if you encounter a neighbor on a page that is a redirect, add the resolved redirect target to the frontier, but also add the redirect to the map
-//     // (page, redirect target): redirect   ----   so when you rebuild the path you can change it back into the redirect that was found on that page
-//     let mut redirects_passed: FxHashMap<(u32, u32), u32> = FxHashMap::default();
-//     // now that a node can have multiple parents, i have to make sure the neighbors are on the same depth, or there will be a loop
-//     let mut visited_depth: FxHashMap<u32, u8> = FxHashMap::default();
-
-//     queue.push_back((goal, 0));
-//     visited_depth.insert(goal, 0);
-
-//     let mut goal_found_at_depth: Option<u8> = None;
-//     let mut prev_depth = 0;
-
-//     while let Some((node, current_depth)) = queue.pop_front() {
-//         if prev_depth != current_depth {
-//             println!("Depth {}", current_depth);
-//             prev_depth = current_depth;
-//         }
-//         // If we have already found the goal, finish this depth and then stop
-//         if let Some(depth) = goal_found_at_depth {
-//             if current_depth >= depth {
-//                 break;
-//             }
-//         }
-
-//         // Check max depth
-//         if current_depth >= max_depth {
-//             println!("MAX DEPTH REACHED");
-//             return None;
-//         }
-
-//         if let Some(neighbors) = graph.get(&node) {
-//             for &raw_neighbor in neighbors {
-//                 // if the neighbor is a redirect, add its neighbors to the queue instead
-//                 if redirect_targets.contains_key(&raw_neighbor) {
-//                     if let Some(redirect_neighbors) = graph.get(&raw_neighbor) {
-//                         for &redirect_neighbor in redirect_neighbors {
-//                             redirects_passed.insert((redirect_neighbor, node), raw_neighbor);
-
-//                             if !parents.contains_key(&redirect_neighbor) {
-//                                 // parents.insert(redirect_neighbor, node);
-//                                 parents.entry(redirect_neighbor).or_default().push(node);
-//                                 if redirect_neighbor == start {
-//                                     let elapsed = now.elapsed();
-//                                     println!("Elapsed: {:.2?}", elapsed);
-//                                     return Some(reconstruct_all_paths(
-//                                         goal,
-//                                         start,
-//                                         &parents,
-//                                         &redirects_passed,
-//                                         true,
-//                                         true,
-//                                     ));
-//                                 }
-//                                 queue.push_back(redirect_neighbor);
-//                             }
-//                         }
-//                     }
-//                 } else {
-//                     if !parents.contains_key(&raw_neighbor) {
-//                         // parents.insert(raw_neighbor, node);
-//                         parents.entry(raw_neighbor).or_default().push(node);
-//                         match visited_depth.get(&raw_neighbor) {
-//                             // Case 1: Never seen this neighbor before. This is a valid new path.
-//                             None => {
-//                                 visited_depth.insert(raw_neighbor, next_depth);
-//                                 parents.insert(raw_neighbor, vec![node]);
-//                                 queue.push_back((raw_neighbor, next_depth));
-//                             }
-//                             // Case 2: Seen this neighbor before AT THE SAME DEPTH. This is a valid parallel path.
-//                             Some(&depth) if depth == next_depth => {
-//                                 parents.get_mut(&neighbor).unwrap().push(node);
-//                             }
-//                             // Case 3: Seen this neighbor before at an earlier depth. This is a longer path or a cycle. Ignore it.
-//                             _ => (),
-//                         }
-
-//                         if neighbor == goal {
-//                             if goal_found_at_depth.is_none() {
-//                                 println!("path found at depth {}", next_depth);
-//                                 goal_found_at_depth = Some(next_depth);
-//                             }
-//                         }
-//                         if raw_neighbor == start {
-//                             let elapsed = now.elapsed();
-//                             println!("Elapsed: {:.2?}", elapsed);
-//                             return Some(reconstruct_all_paths(
-//                                 goal,
-//                                 start,
-//                                 &parents,
-//                                 &redirects_passed,
-//                                 true,
-//                                 true,
-//                             ));
-//                         }
-//                         queue.push_back(raw_neighbor);
-//                     }
-//                 }
-
-//                 let neighbor = if let Some(&redirect_target) = redirect_targets.get(&raw_neighbor) {
-//                     redirects_passed.insert((node, redirect_target), raw_neighbor);
-//                     redirect_target
-//                 } else {
-//                     raw_neighbor
-//                 };
-
-//                 let next_depth = current_depth + 1;
-
-//                 match visited_depth.get(&neighbor) {
-//                     // Case 1: Never seen this neighbor before. This is a valid new path.
-//                     None => {
-//                         visited_depth.insert(neighbor, next_depth);
-//                         parents.insert(neighbor, vec![node]);
-//                         queue.push_back((neighbor, next_depth));
-//                     }
-//                     // Case 2: Seen this neighbor before AT THE SAME DEPTH. This is a valid parallel path.
-//                     Some(&depth) if depth == next_depth => {
-//                         parents.get_mut(&neighbor).unwrap().push(node);
-//                     }
-//                     // Case 3: Seen this neighbor before at an earlier depth. This is a longer path or a cycle. Ignore it.
-//                     _ => (),
-//                 }
-
-//                 if neighbor == goal {
-//                     if goal_found_at_depth.is_none() {
-//                         println!("path found at depth {}", next_depth);
-//                         goal_found_at_depth = Some(next_depth);
-//                     }
-//                 }
-//             }
-//         }
-//     }
-
-//     if goal_found_at_depth.is_some() {
-//         let elapsed = now.elapsed();
-//         println!("Elapsed: {:.2?}", elapsed);
-//         return Some(reconstruct_all_paths(
-//             start,
-//             goal,
-//             &parents,
-//             &redirects_passed,
-//             true,
-//             false,
-//         ));
-//     }
-
-//     None
-// }
-
 pub fn bfs_adj_list_backwards(
+    graph: &FxHashMap<u32, Vec<u32>>,
+    redirect_targets: &FxHashMap<u32, u32>,
+    orig_start: u32,
+    orig_goal: u32,
+    max_depth: u8,
+) -> Option<Vec<Vec<u32>>> {
+    let now = Instant::now();
+
+    let start = redirect_targets
+        .get(&orig_start)
+        .copied()
+        .unwrap_or(orig_start);
+    let goal = redirect_targets
+        .get(&orig_goal)
+        .copied()
+        .unwrap_or(orig_goal);
+
+    // case where start is same as goal (can happen when the start is a redirect to the goal)
+    if start == goal {
+        return Some(vec![vec![orig_goal]]);
+    }
+
+    let mut queue = VecDeque::new();
+    // going to make it so a node can have multiple parents (for multiple shortest paths)
+    let mut parents: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
+    // if you encounter a neighbor on a page that is a redirect, add the resolved redirect target to the frontier, but also add the redirect to the map
+    // (page, redirect target): redirect   ----   so when you rebuild the path you can change it back into the redirect that was found on that page
+    let mut redirects_passed: FxHashMap<(u32, u32), u32> = FxHashMap::default();
+    // now that a node can have multiple parents, i have to make sure the neighbors are on the same depth, or there will be a loop
+    let mut visited_depth: FxHashMap<u32, u8> = FxHashMap::default();
+
+    queue.push_back((goal, 0));
+    visited_depth.insert(goal, 0);
+
+    let mut goal_found_at_depth: Option<u8> = None;
+    let mut prev_depth = 0;
+
+    while let Some((node, current_depth)) = queue.pop_front() {
+        if prev_depth != current_depth {
+            println!("Depth {}", current_depth);
+            prev_depth = current_depth;
+        }
+        // If we have already found the goal, finish this depth and then stop
+        if let Some(depth) = goal_found_at_depth {
+            if current_depth >= depth {
+                break;
+            }
+        }
+
+        // Check max depth
+        if current_depth >= max_depth {
+            println!("MAX DEPTH REACHED");
+            return None;
+        }
+        let next_depth = current_depth + 1;
+
+        if let Some(neighbors) = graph.get(&node) {
+            for &raw_neighbor in neighbors {
+                if redirect_targets.contains_key(&raw_neighbor) {
+                    if let Some(redirect_neighbors) = graph.get(&raw_neighbor) {
+                        for &redirect_neighbor in redirect_neighbors {
+                            redirects_passed.insert((redirect_neighbor, node), raw_neighbor);
+                            process_neighbor(
+                                redirect_neighbor,
+                                next_depth,
+                                start,
+                                &mut visited_depth,
+                                &mut parents,
+                                node,
+                                &mut goal_found_at_depth,
+                                &mut queue,
+                            );
+                        }
+                    }
+                } else {
+                    process_neighbor(
+                        raw_neighbor,
+                        next_depth,
+                        start,
+                        &mut visited_depth,
+                        &mut parents,
+                        node,
+                        &mut goal_found_at_depth,
+                        &mut queue,
+                    );
+                }
+            }
+        }
+    }
+
+    if goal_found_at_depth.is_some() {
+        let elapsed = now.elapsed();
+        println!("Elapsed: {:.2?}", elapsed);
+        return Some(reconstruct_all_paths(
+            goal,
+            start,
+            &parents,
+            &redirects_passed,
+            true,
+            true,
+        ));
+    }
+
+    None
+}
+
+pub fn bfs_adj_list_backwards1(
     graph: &FxHashMap<u32, Vec<u32>>,
     redirect_targets: &FxHashMap<u32, u32>,
     orig_start: u32,
@@ -628,20 +569,29 @@ pub fn reconstruct_all_paths(
         }
     }
 
+    // Deduplicate paths using a HashSet
+    let mut seen = HashSet::new();
+    let mut unique_paths = Vec::with_capacity(all_paths.len());
+    for path in all_paths {
+        if seen.insert(path.clone()) {
+            unique_paths.push(path);
+        }
+    }
+
     // If reverse flag is set, reverse each found path back
     if reverse {
-        for path in &mut all_paths {
+        for path in &mut unique_paths {
             path.reverse();
         }
     }
 
     if !return_redirects {
-        return all_paths;
+        return unique_paths;
     }
 
     // Apply redirect resolution
     let mut resolved_paths = Vec::new();
-    for path in all_paths {
+    for path in unique_paths {
         if path.len() < 2 {
             resolved_paths.push(path);
             continue;
@@ -1175,6 +1125,38 @@ pub fn reconstruct_all_paths(
 //     return orig_path;
 // }
 
+use std::collections::HashSet;
+
+fn paths_to_strings(
+    paths: &Vec<Vec<u32>>,
+    id_to_title: &FxHashMap<u32, String>,
+) -> HashSet<String> {
+    paths
+        .iter()
+        .map(|path| {
+            path.iter()
+                .map(|id| {
+                    id_to_title
+                        .get(id)
+                        .map(String::as_str)
+                        .unwrap_or("[Unknown]")
+                })
+                .collect::<Vec<_>>()
+                .join(" -> ")
+        })
+        .collect()
+}
+
+fn print_path_examples(paths: &HashSet<String>, label: &str, max_print: usize) {
+    println!("{} paths ({} examples):", label, paths.len());
+    for (i, path) in paths.iter().take(max_print).enumerate() {
+        println!("  {}: {}", i + 1, path);
+    }
+    if paths.len() > max_print {
+        println!("  ...and {} more", paths.len() - max_print);
+    }
+}
+
 pub fn bfs_interactive_session(
     title_to_id: &FxHashMap<String, u32>,
     id_to_title: &FxHashMap<u32, String>,
@@ -1220,22 +1202,20 @@ pub fn bfs_interactive_session(
 
         let max_depth = 50;
 
-        println!("\nRunning BFS on adjacency list graph...");
+        println!("\nRunning forwards BFS on adjacency list graph...");
         let now = Instant::now();
-        let paths_adj = bfs_adj_list(adj_graph, redirect_targets, start_id, goal_id, max_depth);
-        let elapsed_adj = now.elapsed();
+        let paths_adj_fwd = bfs_adj_list(adj_graph, redirect_targets, start_id, goal_id, max_depth);
+        let elapsed_fwd = now.elapsed();
 
-        match paths_adj {
+        match &paths_adj_fwd {
             Some(paths) if !paths.is_empty() => {
                 println!(
                     "Paths found (adjacency list) [{} shortest paths, {:.2?}]:",
                     paths.len(),
-                    elapsed_adj
+                    elapsed_fwd
                 );
-                // for (i, path) in paths.iter().enumerate() {
                 let path = &paths[0];
-                let i = 0;
-                println!("Path {} ({} nodes):", i + 1, path.len());
+                println!("Path 1 ({} nodes):", path.len());
                 for id in path {
                     let title = id_to_title
                         .get(id)
@@ -1247,45 +1227,70 @@ pub fn bfs_interactive_session(
             }
             _ => println!(
                 "No path found in adjacency list BFS (after {:.2?}).",
-                elapsed_adj
+                elapsed_fwd
             ),
         }
 
-        // println!("\nRunning backwards BFS on adjacency list graph...");
-        // let now = Instant::now();
-        // let paths_adj_bwd = bfs_adj_list_backwards(
-        //     adj_graph_bwd,
-        //     redirect_targets,
-        //     start_id,
-        //     goal_id,
-        //     max_depth,
-        // );
-        // let elapsed_adj = now.elapsed();
+        println!("\nRunning backwards BFS on adjacency list graph...");
+        let now = Instant::now();
+        let paths_adj_bwd = bfs_adj_list_backwards(
+            adj_graph_bwd,
+            redirect_targets,
+            start_id,
+            goal_id,
+            max_depth,
+        );
+        let elapsed_bwd = now.elapsed();
 
-        // match paths_adj_bwd {
-        //     Some(paths) if !paths.is_empty() => {
-        //         println!(
-        //             "Paths found (adjacency list, backwards) [{} shortest paths, {:.2?}]:",
-        //             paths.len(),
-        //             elapsed_adj
-        //         );
-        //         for (i, path) in paths.iter().enumerate() {
-        //             println!("Path {} ({} nodes):", i + 1, path.len());
-        //             for id in path {
-        //                 let title = id_to_title
-        //                     .get(id)
-        //                     .map(String::as_str)
-        //                     .unwrap_or("[Unknown]");
-        //                 print!("{} -> ", title);
-        //             }
-        //             println!("END");
-        //         }
-        //     }
-        //     _ => println!(
-        //         "No path found in adjacency list BFS (after {:.2?}).",
-        //         elapsed_adj
-        //     ),
-        // }
+        match &paths_adj_bwd {
+            Some(paths) if !paths.is_empty() => {
+                println!(
+                    "Paths found (adjacency list) [{} shortest paths, {:.2?}]:",
+                    paths.len(),
+                    elapsed_bwd
+                );
+                let path = &paths[0];
+                println!("Path 1 ({} nodes):", path.len());
+                for id in path {
+                    let title = id_to_title
+                        .get(id)
+                        .map(String::as_str)
+                        .unwrap_or("[Unknown]");
+                    print!("{} -> ", title);
+                }
+                println!("END");
+            }
+            _ => println!(
+                "No path found in adjacency list BFS (after {:.2?}).",
+                elapsed_bwd
+            ),
+        }
+        if let (Some(fwd), Some(bwd)) = (paths_adj_fwd.clone(), paths_adj_bwd.clone()) {
+            let fwd_set = paths_to_strings(&fwd, id_to_title);
+            let bwd_set = paths_to_strings(&bwd, id_to_title);
+
+            println!("\nForward BFS found {} shortest paths", fwd_set.len());
+            println!("Backward BFS found {} shortest paths", bwd_set.len());
+
+            let only_in_fwd: HashSet<_> = fwd_set.difference(&bwd_set).collect();
+            let only_in_bwd: HashSet<_> = bwd_set.difference(&fwd_set).collect();
+
+            println!("Paths only in forward BFS: {}", only_in_fwd.len());
+            print_path_examples(
+                &only_in_fwd.iter().cloned().cloned().collect(),
+                "Only in Forward",
+                10,
+            );
+
+            println!("Paths only in backward BFS: {}", only_in_bwd.len());
+            print_path_examples(
+                &only_in_bwd.iter().cloned().cloned().collect(),
+                "Only in Backward",
+                10,
+            );
+        } else {
+            println!("One or both BFS searches did not find paths, skipping comparison.");
+        }
 
         // // Bidirectional BFS
         // println!("\nRunning Bidirectional BFS on adjacency list graph...");
@@ -1417,3 +1422,7 @@ pub fn bfs_interactive_session(
 
 // Echinorhynchida -> Illiosentidae is not found even though Echinorhynchida -> Leptorhynchoididae is found
 // Illiosentidae redirects to Leptorhynchoididae
+
+// how should i handle the case where on a page (say banana) there are two links: one is a redirect to apple (fruit apple) and the other is a direct link to apple (apple fruit)
+// do i consider banana -> fruit apple and banana -> apple fruit the same path or keep both
+// i will keep only 1 for now
