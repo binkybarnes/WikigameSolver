@@ -71,7 +71,10 @@ fn process_neighbor_bi(
             *meet_found_at_depth = Some(next_combined_depth);
             println!("path found at depth {}", next_combined_depth);
         }
-        meet_nodes.push(neighbor);
+        // this check prevents duplicates in meet_nodes
+        if !meet_nodes.contains(&neighbor) {
+            meet_nodes.push(neighbor);
+        }
     }
 }
 
@@ -272,8 +275,6 @@ pub fn bi_bfs_adj_list(
     if meet_found_at_depth.is_some() {
         let elapsed = now.elapsed();
         println!("Elapsed: {:.2?}", elapsed);
-        meet_nodes.sort_unstable();
-        meet_nodes.dedup();
 
         return Some(merge_all_paths(
             start,
@@ -299,24 +300,68 @@ pub fn reconstruct_all_paths(
 ) -> Vec<Vec<u32>> {
     let mut all_paths = Vec::new();
 
-    // Stack holds (current_node, current_path)
-    // current_path is goal->...->current_node order
-    let mut stack: Vec<(u32, Vec<u32>)> = Vec::new();
-    stack.push((goal, vec![goal]));
+    // working path buffer: stores nodes in reverse order: goal, parent, parent, ..., current
+    let mut path: Vec<u32> = Vec::new();
+    path.push(goal);
 
-    while let Some((node, path)) = stack.pop() {
-        if node == start {
-            let mut complete_path = path.clone();
-            complete_path.reverse(); // make it start->...->goal
-            all_paths.push(complete_path);
-        } else if let Some(pars) = parents.get(&node) {
-            for &p in pars {
-                let mut new_path = path.clone();
-                new_path.push(p);
-                stack.push((p, new_path));
+    // Stack of frames: (&parents_slice_for_node, next_index_to_try)
+    // We store slices (&[u32]) borrowed from the `parents` map so we avoid repeated map lookups.
+    let mut stack: Vec<(&[u32], usize)> = Vec::new();
+    let goal_pars: &[u32] = parents.get(&goal).map(|v| v.as_slice()).unwrap_or(&[]);
+    stack.push((goal_pars, 0));
+
+    while let Some((pars, idx)) = stack.last_mut() {
+        // Current node is always the last element in `path`.
+        let current = *path.last().unwrap();
+
+        // If we've reached start, materialize a path (start -> ... -> goal)
+        if current == start {
+            let mut out = Vec::with_capacity(path.len());
+            // path is goal..start (end is start), so iterate reversed to get start..goal
+            for &n in path.iter().rev() {
+                out.push(n);
             }
+            all_paths.push(out);
+
+            // backtrack: pop frame and last node
+            stack.pop();
+            path.pop();
+            continue;
+        }
+
+        // If there are still parents to explore for current node, descend to next parent
+        if *idx < pars.len() {
+            let p = pars[*idx];
+            *idx += 1;
+
+            // push parent into the path and push its parents slice onto the stack
+            path.push(p);
+            let p_pars: &[u32] = parents.get(&p).map(|v| v.as_slice()).unwrap_or(&[]);
+            stack.push((p_pars, 0));
+        } else {
+            // no more parents to try => backtrack
+            stack.pop();
+            path.pop();
         }
     }
+    // // Stack holds (current_node, current_path)
+    // // current_path is goal->...->current_node order
+    // let mut stack: Vec<(u32, Vec<u32>)> = Vec::new();
+    // stack.push((goal, vec![goal]));
+
+    // while let Some((node, path)) = stack.pop() {
+    //     if node == start {
+    //         let mut complete_path = path.clone();
+    //         complete_path.reverse(); // make it start->...->goal
+    //         all_paths.push(complete_path);
+    //     } else if let Some(pars) = parents.get(&node) {
+    //         for &p in pars {
+    //             let mut new_path = path.clone();
+    //             new_path.push(p);
+    //             stack.push((p, new_path));
+    //         }
+    //     }
+    // }
 
     // If reverse flag is set, reverse each found path back
     if reverse {
@@ -600,8 +645,6 @@ pub fn bi_bfs_csr(
         let elapsed = now.elapsed();
         println!("Elapsed: {:.2?}", elapsed);
 
-        meet_nodes.sort_unstable();
-        meet_nodes.dedup();
         return Some(merge_all_paths_csr(
             start,
             &meet_nodes,
