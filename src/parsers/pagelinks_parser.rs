@@ -2,11 +2,21 @@ use crate::util;
 use bitcode::{Decode, Encode};
 use flate2::read::GzDecoder;
 use indicatif::{ProgressBar, ProgressStyle};
+use memmap2::Mmap;
 use regex::Regex;
 use rustc_hash::{FxBuildHasher, FxHashMap};
 
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, BufWriter, Read, Write};
+
+pub trait CsrGraphTrait {
+    fn get(&self, dense_node: u32) -> &[u32];
+    fn get_reverse(&self, dense_node: u32) -> &[u32];
+
+    fn orig_to_dense(&self) -> &FxHashMap<u32, u32>;
+    fn dense_to_orig(&self) -> &[u32];
+    fn redirects_passed(&self) -> &FxHashMap<(u32, u32), u32>;
+}
 
 #[derive(Encode, Decode)]
 pub struct CsrGraph {
@@ -20,16 +30,65 @@ pub struct CsrGraph {
     // used in reconstruct path after bfs
     pub redirects_passed: FxHashMap<(u32, u32), u32>,
 }
-impl CsrGraph {
-    pub fn get(&self, dense_node: u32) -> &[u32] {
+impl CsrGraphTrait for CsrGraph {
+    fn get(&self, dense_node: u32) -> &[u32] {
         let start = self.offsets[dense_node as usize] as usize;
         let end = self.offsets[dense_node as usize + 1] as usize;
         &self.edges[start..end]
     }
-    pub fn get_reverse(&self, dense_node: u32) -> &[u32] {
+    fn get_reverse(&self, dense_node: u32) -> &[u32] {
         let start = self.reverse_offsets[dense_node as usize] as usize;
         let end = self.reverse_offsets[dense_node as usize + 1] as usize;
         &self.reverse_edges[start..end]
+    }
+
+    fn orig_to_dense(&self) -> &FxHashMap<u32, u32> {
+        &self.orig_to_dense
+    }
+    fn dense_to_orig(&self) -> &[u32] {
+        &self.dense_to_orig
+    }
+    fn redirects_passed(&self) -> &FxHashMap<(u32, u32), u32> {
+        &self.redirects_passed
+    }
+}
+
+pub struct CsrGraphMmap {
+    // small arrays that are cheap to keep in RAM:
+    pub offsets: Vec<u32>, // you can mmap this too if offsets huge
+    pub reverse_offsets: Vec<u32>,
+    // big arrays mmap'd:
+    pub edges_mmap: Mmap,
+    pub reverse_edges_mmap: Mmap,
+    // small maps still in memory (serialize/deserialize with bitcode)
+    pub orig_to_dense: FxHashMap<u32, u32>,
+    pub dense_to_orig: Vec<u32>,
+    pub redirects_passed: FxHashMap<(u32, u32), u32>,
+}
+
+impl CsrGraphTrait for CsrGraphMmap {
+    /// get neighbors as a slice by casting the mmap bytes to u32 slice
+    fn get(&self, dense_node: u32) -> &[u32] {
+        let edges: &[u32] = util::mmap_as_u32_slice(&self.edges_mmap);
+        let start = self.offsets[dense_node as usize] as usize;
+        let end = self.offsets[dense_node as usize + 1] as usize;
+        &edges[start..end]
+    }
+
+    fn get_reverse(&self, dense_node: u32) -> &[u32] {
+        let revedges: &[u32] = util::mmap_as_u32_slice(&self.reverse_edges_mmap);
+        let start = self.reverse_offsets[dense_node as usize] as usize;
+        let end = self.reverse_offsets[dense_node as usize + 1] as usize;
+        &revedges[start..end]
+    }
+    fn orig_to_dense(&self) -> &FxHashMap<u32, u32> {
+        &self.orig_to_dense
+    }
+    fn dense_to_orig(&self) -> &[u32] {
+        &self.dense_to_orig
+    }
+    fn redirects_passed(&self) -> &FxHashMap<(u32, u32), u32> {
+        &self.redirects_passed
     }
 }
 

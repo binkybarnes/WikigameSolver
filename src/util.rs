@@ -3,6 +3,8 @@ use crate::redirect_parser;
 use crate::search;
 use bitcode::Decode;
 use bitcode::Encode;
+use bytemuck::cast_slice;
+use memmap2::Mmap;
 use rustc_hash::{FxBuildHasher, FxHashMap};
 use serde::{de::DeserializeOwned, Serialize};
 use std::io::Read;
@@ -65,6 +67,35 @@ pub fn load_from_file<T: for<'a> Decode<'a>>(path: &str) -> anyhow::Result<T> {
     Ok(decoded)
 }
 
+/// Write a Vec<u32> as raw little-endian bytes to disk.
+/// For portability/AArch64 differences you can write u32::to_le_bytes in a loop,
+/// but this fast path assumes native little-endian.
+pub fn write_u32_vec_to_file(v: &Vec<u32>, path: &str) -> anyhow::Result<()> {
+    println!("Writing u32 and saving to file");
+
+    let mut file = File::create(path)?;
+    // cast_slice is safe if u32 is Pod (it is) and we remain on same arch.
+    let bytes: &[u8] = cast_slice(v.as_slice());
+    file.write_all(bytes)?;
+    file.sync_all()?;
+    Ok(())
+}
+
+/// Memory-map file and return the Mmap object.
+pub fn mmap_file(path: &str) -> anyhow::Result<Mmap> {
+    let file = File::open(path)?;
+    // Safety: mapping readonly file
+    let mmap = unsafe { Mmap::map(&file)? };
+    Ok(mmap)
+}
+
+/// Cast a Mmap (bytes) to &[u32]. Caller must ensure alignment and length multiple of 4.
+/// This returns a runtime slice, not a stored reference into the struct.
+pub fn mmap_as_u32_slice(mmap: &Mmap) -> &'_ [u32] {
+    // bytemuck::cast_slice will panic if the length is not a multiple of u32
+    bytemuck::cast_slice::<u8, u32>(&mmap[..])
+}
+
 // pub fn save_to_file<T: Serialize>(data: &T, path: &str) -> anyhow::Result<()> {
 //     println!("Serializing and saving to file");
 //     let file = File::create(path)?;
@@ -83,14 +114,14 @@ pub fn load_from_file<T: for<'a> Decode<'a>>(path: &str) -> anyhow::Result<T> {
 // }
 
 // TODO!
-pub fn run_interactive_session(
+pub fn run_interactive_session<G: pagelinks_parser::CsrGraphTrait>(
     title_to_id: &FxHashMap<String, u32>,
     id_to_title: &FxHashMap<u32, String>,
     redirect_targets: &FxHashMap<u32, u32>,
     linktargets: &FxHashMap<u32, u32>,
     pagelinks_adjacency_list: &FxHashMap<u32, Vec<u32>>,
     incoming_pagelinks_adjacency_list: &FxHashMap<u32, Vec<u32>>,
-    pagelinks_csr: &pagelinks_parser::CsrGraph,
+    pagelinks_csr: &G,
 ) -> anyhow::Result<()> {
     loop {
         print!("> ");
@@ -160,11 +191,11 @@ pub fn run_interactive_session(
 
                     // Print neighbors from CSR graph if provided
 
-                    if let Some(&dense_idx) = pagelinks_csr.orig_to_dense.get(&page_id) {
+                    if let Some(&dense_idx) = pagelinks_csr.orig_to_dense().get(&page_id) {
                         let dense_neighbors = pagelinks_csr.get(dense_idx);
                         let orig_neighbors: Vec<u32> = dense_neighbors
                             .iter()
-                            .map(|&dense_n| pagelinks_csr.dense_to_orig[dense_n as usize])
+                            .map(|&dense_n| pagelinks_csr.dense_to_orig()[dense_n as usize])
                             .collect();
                         println!(
                             "CSR neighbors ({}): {:?}",
