@@ -5,7 +5,10 @@ use std::{
     time::Instant,
 };
 
-use crate::parsers::pagelinks_parser;
+use crate::{
+    parsers::pagelinks_parser::{self, CsrGraphTrait},
+    RedirectsPassedTrait,
+};
 
 fn process_neighbor(
     neighbor: u32,
@@ -79,14 +82,18 @@ fn process_neighbor_bi(
 }
 
 // ilisendipede something -> Leptorhynchoididae (redirect to target)
-pub fn bfs_adj_list(
+pub fn bfs_adj_list<G>(
     graph: &FxHashMap<u32, Vec<u32>>,
-    redirects_passed: &FxHashMap<(u32, u32), u32>,
+    redirects_passed: &G::RedirectsPassedType,
     orig_start: u32,
     orig_goal: u32,
     max_depth: u8,
     backwards: bool,
-) -> Option<Vec<Vec<u32>>> {
+) -> Option<Vec<Vec<u32>>>
+where
+    G: CsrGraphTrait,
+    G::RedirectsPassedType: RedirectsPassedTrait,
+{
     let now = Instant::now();
 
     // DO NOT PASS IN REDIRECTS AS START AND GOAL
@@ -156,11 +163,11 @@ pub fn bfs_adj_list(
     if goal_found_at_depth.is_some() {
         let elapsed = now.elapsed();
         println!("Elapsed: {:.2?}", elapsed);
-        return Some(reconstruct_all_paths(
+        return Some(reconstruct_all_paths::<G>(
             start,
             goal,
             &parents,
-            &redirects_passed,
+            redirects_passed,
             true,
             backwards,
         ));
@@ -169,14 +176,18 @@ pub fn bfs_adj_list(
     None
 }
 
-pub fn bi_bfs_adj_list(
+pub fn bi_bfs_adj_list<G>(
     graph_fwd: &FxHashMap<u32, Vec<u32>>,
     graph_bwd: &FxHashMap<u32, Vec<u32>>,
-    redirects_passed: &FxHashMap<(u32, u32), u32>,
+    redirects_passed: &G::RedirectsPassedType,
     start: u32,
     goal: u32,
     max_depth: u8,
-) -> Option<Vec<Vec<u32>>> {
+) -> Option<Vec<Vec<u32>>>
+where
+    G: CsrGraphTrait,
+    G::RedirectsPassedType: RedirectsPassedTrait,
+{
     let now = Instant::now();
 
     // case where start is same as goal (can happen when the start is a redirect to the goal)
@@ -276,7 +287,7 @@ pub fn bi_bfs_adj_list(
         let elapsed = now.elapsed();
         println!("Elapsed: {:.2?}", elapsed);
 
-        return Some(merge_all_paths(
+        return Some(merge_all_paths::<G>(
             start,
             &meet_nodes,
             goal,
@@ -290,14 +301,18 @@ pub fn bi_bfs_adj_list(
     None
 }
 
-pub fn reconstruct_all_paths(
+pub fn reconstruct_all_paths<G>(
     start: u32,
     goal: u32,
     parents: &FxHashMap<u32, Vec<u32>>,
-    redirects_passed: &FxHashMap<(u32, u32), u32>,
+    redirects_passed: &G::RedirectsPassedType,
     return_redirects: bool,
     reverse: bool,
-) -> Vec<Vec<u32>> {
+) -> Vec<Vec<u32>>
+where
+    G: CsrGraphTrait,
+    G::RedirectsPassedType: RedirectsPassedTrait, // <- important
+{
     let mut all_paths = Vec::new();
 
     // Stack holds (current_node, current_path)
@@ -343,7 +358,11 @@ pub fn reconstruct_all_paths(
         for window in path.windows(2) {
             let prev_node = window[0];
             let node = window[1];
-            resolved_path.push(*redirects_passed.get(&(prev_node, node)).unwrap_or(&node));
+            resolved_path.push(
+                redirects_passed
+                    .get_redirect(prev_node, node)
+                    .unwrap_or(node),
+            );
         }
         resolved_paths.push(resolved_path);
     }
@@ -352,19 +371,23 @@ pub fn reconstruct_all_paths(
     resolved_paths
 }
 
-pub fn merge_all_paths(
+pub fn merge_all_paths<G>(
     start: u32,
     meet_nodes: &Vec<u32>,
     goal: u32,
     parents_fwd: &FxHashMap<u32, Vec<u32>>,
     parents_bwd: &FxHashMap<u32, Vec<u32>>,
-    redirects_passed: &FxHashMap<(u32, u32), u32>,
+    redirects_passed: &G::RedirectsPassedType,
     return_redirects: bool,
-) -> Vec<Vec<u32>> {
+) -> Vec<Vec<u32>>
+where
+    G: CsrGraphTrait,
+    G::RedirectsPassedType: RedirectsPassedTrait, // <- important
+{
     let mut final_paths: Vec<Vec<u32>> = Vec::new();
 
     for &meet in meet_nodes {
-        let fwd_parts = reconstruct_all_paths(
+        let fwd_parts = reconstruct_all_paths::<G>(
             start,
             meet,
             parents_fwd,
@@ -372,7 +395,7 @@ pub fn merge_all_paths(
             return_redirects,
             false,
         );
-        let bwd_parts = reconstruct_all_paths(
+        let bwd_parts = reconstruct_all_paths::<G>(
             goal,
             meet,
             parents_bwd,
@@ -395,13 +418,17 @@ pub fn merge_all_paths(
     final_paths
 }
 
-pub fn bfs_csr<G: pagelinks_parser::CsrGraphTrait>(
+pub fn bfs_csr<G>(
     graph: &G,
     orig_start: u32,
     orig_goal: u32,
     max_depth: u8,
     backwards: bool,
-) -> Option<Vec<Vec<u32>>> {
+) -> Option<Vec<Vec<u32>>>
+where
+    G: CsrGraphTrait,
+    G::RedirectsPassedType: RedirectsPassedTrait,
+{
     let now = Instant::now();
 
     // DO NOT PASS IN REDIRECTS AS START AND GOAL
@@ -477,7 +504,7 @@ pub fn bfs_csr<G: pagelinks_parser::CsrGraphTrait>(
     if goal_found_at_depth.is_some() {
         let elapsed = now.elapsed();
         println!("Elapsed: {:.2?}", elapsed);
-        return Some(reconstruct_all_paths_csr(
+        return Some(reconstruct_all_paths_csr::<G>(
             start,
             goal,
             &parents,
@@ -491,16 +518,14 @@ pub fn bfs_csr<G: pagelinks_parser::CsrGraphTrait>(
     None
 }
 
-pub fn bi_bfs_csr<G: pagelinks_parser::CsrGraphTrait>(
-    graph: &G,
-    orig_start: u32,
-    orig_goal: u32,
-    max_depth: u8,
-) -> Option<Vec<Vec<u32>>> {
+pub fn bi_bfs_csr<G>(graph: &G, start: u32, goal: u32, max_depth: u8) -> Option<Vec<Vec<u32>>>
+where
+    G: CsrGraphTrait,
+    G::RedirectsPassedType: RedirectsPassedTrait,
+{
     let now = Instant::now();
 
-    let start = graph.orig_to_dense().get(&orig_start).copied()?;
-    let goal = graph.orig_to_dense().get(&orig_goal).copied()?;
+    // start and goal should be dense ids, also should not be redirects
 
     // case where start is same as goal (can happen when the start is a redirect to the goal)
     if start == goal {
@@ -601,14 +626,14 @@ pub fn bi_bfs_csr<G: pagelinks_parser::CsrGraphTrait>(
         let elapsed = now.elapsed();
         println!("Elapsed: {:.2?}", elapsed);
 
-        return Some(merge_all_paths_csr(
+        return Some(merge_all_paths_csr::<G>(
             start,
             &meet_nodes,
             goal,
             &parents_fwd,
             &parents_bwd,
             graph.redirects_passed(),
-            graph.dense_to_orig(),
+            // graph.dense_to_orig(),
             true,
         ));
     }
@@ -877,16 +902,20 @@ pub fn bi_bfs_csr<G: pagelinks_parser::CsrGraphTrait>(
 //     None
 // }
 
-pub fn reconstruct_all_paths_csr(
+pub fn reconstruct_all_paths_csr<G>(
     start: u32,
     goal: u32,
     parents: &FxHashMap<u32, Vec<u32>>,
-    redirects_passed: &FxHashMap<(u32, u32), u32>,
+    redirects_passed: &G::RedirectsPassedType,
     dense_to_orig: &[u32],
     return_redirects: bool,
     reverse: bool,
-) -> Vec<Vec<u32>> {
-    let all_paths = reconstruct_all_paths(
+) -> Vec<Vec<u32>>
+where
+    G: CsrGraphTrait,
+    G::RedirectsPassedType: RedirectsPassedTrait,
+{
+    let all_paths = reconstruct_all_paths::<G>(
         start,
         goal,
         parents,
@@ -907,17 +936,21 @@ pub fn reconstruct_all_paths_csr(
     return orig_all_paths;
 }
 
-pub fn merge_all_paths_csr(
+pub fn merge_all_paths_csr<G>(
     start: u32,
     meet_nodes: &Vec<u32>,
     goal: u32,
     parents_fwd: &FxHashMap<u32, Vec<u32>>,
     parents_bwd: &FxHashMap<u32, Vec<u32>>,
-    redirects_passed: &FxHashMap<(u32, u32), u32>,
-    dense_to_orig: &[u32],
+    redirects_passed: &G::RedirectsPassedType,
+    // dense_to_orig: &[u32],
     return_redirects: bool,
-) -> Vec<Vec<u32>> {
-    let all_paths = merge_all_paths(
+) -> Vec<Vec<u32>>
+where
+    G: CsrGraphTrait,
+    G::RedirectsPassedType: RedirectsPassedTrait,
+{
+    let all_paths = merge_all_paths::<G>(
         start,
         meet_nodes,
         goal,
@@ -926,17 +959,19 @@ pub fn merge_all_paths_csr(
         redirects_passed,
         return_redirects,
     );
+    // the paths will be in dense ids, which will directly be converted with the new dense_id_to_title struct
+    all_paths
 
-    let orig_all_paths = all_paths
-        .into_iter()
-        .map(|path| {
-            path.into_iter()
-                .map(|node| dense_to_orig[node as usize])
-                .collect()
-        })
-        .collect();
+    // let orig_all_paths = all_paths
+    //     .into_iter()
+    //     .map(|path| {
+    //         path.into_iter()
+    //             .map(|node| dense_to_orig[node as usize])
+    //             .collect()
+    //     })
+    //     .collect();
 
-    return orig_all_paths;
+    // return orig_all_paths;
 }
 
 // pub fn reconstruct_path_csr_backwards(
@@ -1017,15 +1052,21 @@ fn print_path_examples(paths: &HashSet<String>, label: &str, max_print: usize) {
     }
 }
 
-pub fn bfs_interactive_session<G: pagelinks_parser::CsrGraphTrait>(
-    title_to_id: &FxHashMap<String, u32>,
-    id_to_title: &FxHashMap<u32, String>,
+pub fn bfs_interactive_session<G>(
+    // title_to_id: &FxHashMap<String, u32>,
+    // id_to_title: &FxHashMap<u32, String>,
+    title_to_dense_id: &crate::TitleToDenseIdMmap,
+    dense_id_to_title: &crate::DenseIdToTitleMmap,
     csr_graph: &G,
     // adj_graph: &FxHashMap<u32, Vec<u32>>,
     // adj_graph_bwd: &FxHashMap<u32, Vec<u32>>,
-    redirect_targets: &FxHashMap<u32, u32>,
+    // redirect_targets: &FxHashMap<u32, u32>,
+    dense_redirect_targets: &FxHashMap<u32, u32>,
     // redirects_passed: &FxHashMap<(u32, u32), u32>,
-) {
+) where
+    G: pagelinks_parser::CsrGraphTrait,
+    G::RedirectsPassedType: RedirectsPassedTrait,
+{
     let stdin = io::stdin();
     let mut stdout = io::stdout();
 
@@ -1052,11 +1093,11 @@ pub fn bfs_interactive_session<G: pagelinks_parser::CsrGraphTrait>(
             break;
         }
 
-        let Some(&start_id_raw) = title_to_id.get(start_title) else {
+        let Some(start_id_raw) = title_to_dense_id.get(start_title) else {
             println!("Start title '{}' not found in mapping.", start_title);
             continue;
         };
-        let Some(&goal_id_raw) = title_to_id.get(goal_title) else {
+        let Some(goal_id_raw) = title_to_dense_id.get(goal_title) else {
             println!("Goal title '{}' not found in mapping.", goal_title);
             continue;
         };
@@ -1065,10 +1106,10 @@ pub fn bfs_interactive_session<G: pagelinks_parser::CsrGraphTrait>(
         let mut goal_id = goal_id_raw;
 
         // Resolve redirects
-        if let Some(&redirect_target) = redirect_targets.get(&start_id) {
+        if let Some(&redirect_target) = dense_redirect_targets.get(&start_id) {
             start_id = redirect_target;
         }
-        if let Some(&redirect_target) = redirect_targets.get(&goal_id) {
+        if let Some(&redirect_target) = dense_redirect_targets.get(&goal_id) {
             goal_id = redirect_target;
         }
 
@@ -1275,10 +1316,7 @@ pub fn bfs_interactive_session<G: pagelinks_parser::CsrGraphTrait>(
                 let path = &paths[0];
                 println!("Path 1 ({} nodes):", path.len());
                 for id in path {
-                    let title = id_to_title
-                        .get(id)
-                        .map(String::as_str)
-                        .unwrap_or("[Unknown]");
+                    let title = dense_id_to_title.get(*id);
                     print!("{} -> ", title);
                 }
                 println!("END");
@@ -1292,39 +1330,39 @@ pub fn bfs_interactive_session<G: pagelinks_parser::CsrGraphTrait>(
     println!("Exiting interactive session.");
 }
 
-use rand::seq::IteratorRandom;
-pub fn benchmark_random_bfs<G: pagelinks_parser::CsrGraphTrait>(
+use rand::{seq::IteratorRandom, Rng};
+pub fn benchmark_random_bfs<G>(
     graph: &G,
-    title_to_id: &FxHashMap<String, u32>,
-    redirect_targets: &FxHashMap<u32, u32>,
+    dense_redirect_targets: &FxHashMap<u32, u32>,
     num_pairs: usize,
     max_depth: u8,
-) {
+) where
+    G: pagelinks_parser::CsrGraphTrait,
+    G::RedirectsPassedType: RedirectsPassedTrait,
+{
+    let start_time = Instant::now();
+
     let mut rng = rand::rng();
+    let n = graph.dense_to_orig().len();
 
-    // Pick random pairs
-    let titles: Vec<&String> = title_to_id.keys().collect();
     for _ in 0..num_pairs {
-        let start_title = titles.iter().choose(&mut rng).unwrap();
-        let goal_title = titles.iter().choose(&mut rng).unwrap();
-
-        let start_id_raw = title_to_id[*start_title];
-        let goal_id_raw = title_to_id[*goal_title];
+        let start_dense = rng.random_range(0..n) as u32;
+        let goal_dense = rng.random_range(0..n) as u32;
 
         // Resolve redirects
-        let start_id = redirect_targets
-            .get(&start_id_raw)
+        let start_id = dense_redirect_targets
+            .get(&start_dense)
             .copied()
-            .unwrap_or(start_id_raw);
-        let goal_id = redirect_targets
-            .get(&goal_id_raw)
+            .unwrap_or(start_dense);
+        let goal_id = dense_redirect_targets
+            .get(&goal_dense)
             .copied()
-            .unwrap_or(goal_id_raw);
+            .unwrap_or(goal_dense);
 
-        println!("\nRunning BFS: '{}' -> '{}'", start_title, goal_title);
+        println!("\nRunning BFS: {} -> {}", start_id, goal_dense);
 
         let start_time = Instant::now();
-        let paths = bi_bfs_csr(graph, start_id, goal_id, max_depth);
+        let paths = bi_bfs_csr::<G>(graph, start_id, goal_id, max_depth);
         let elapsed = start_time.elapsed();
 
         match paths {
@@ -1332,6 +1370,11 @@ pub fn benchmark_random_bfs<G: pagelinks_parser::CsrGraphTrait>(
             None => println!("No path found (elapsed {:.2?})", elapsed),
         }
     }
+    let elapsed = start_time.elapsed();
+    println!(
+        "Benchmark for {} pairs,  (elapsed {:.2?})",
+        num_pairs, elapsed
+    );
 }
 
 // some cases for redirects

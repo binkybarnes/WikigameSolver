@@ -10,12 +10,14 @@ use std::fs::File;
 use std::io::{self, BufRead, BufReader, BufWriter, Read, Write};
 
 pub trait CsrGraphTrait {
+    type RedirectsPassedType;
+
     fn get(&self, dense_node: u32) -> &[u32];
     fn get_reverse(&self, dense_node: u32) -> &[u32];
 
     fn orig_to_dense(&self) -> &FxHashMap<u32, u32>;
     fn dense_to_orig(&self) -> &[u32];
-    fn redirects_passed(&self) -> &FxHashMap<(u32, u32), u32>;
+    fn redirects_passed(&self) -> &Self::RedirectsPassedType;
 }
 
 #[derive(Encode, Decode)]
@@ -31,6 +33,8 @@ pub struct CsrGraph {
     pub redirects_passed: FxHashMap<(u32, u32), u32>,
 }
 impl CsrGraphTrait for CsrGraph {
+    type RedirectsPassedType = FxHashMap<(u32, u32), u32>;
+
     fn get(&self, dense_node: u32) -> &[u32] {
         let start = self.offsets[dense_node as usize] as usize;
         let end = self.offsets[dense_node as usize + 1] as usize;
@@ -48,7 +52,7 @@ impl CsrGraphTrait for CsrGraph {
     fn dense_to_orig(&self) -> &[u32] {
         &self.dense_to_orig
     }
-    fn redirects_passed(&self) -> &FxHashMap<(u32, u32), u32> {
+    fn redirects_passed(&self) -> &Self::RedirectsPassedType {
         &self.redirects_passed
     }
 }
@@ -63,10 +67,12 @@ pub struct CsrGraphMmap {
     // small maps still in memory (serialize/deserialize with bitcode)
     pub orig_to_dense: FxHashMap<u32, u32>,
     pub dense_to_orig: Vec<u32>,
-    pub redirects_passed: FxHashMap<(u32, u32), u32>,
+    pub redirects_passed: crate::RedirectsPassedMmap,
 }
 
 impl CsrGraphTrait for CsrGraphMmap {
+    type RedirectsPassedType = crate::RedirectsPassedMmap;
+
     /// get neighbors as a slice by casting the mmap bytes to u32 slice
     fn get(&self, dense_node: u32) -> &[u32] {
         let edges: &[u32] = util::mmap_as_u32_slice(&self.edges_mmap);
@@ -87,7 +93,7 @@ impl CsrGraphTrait for CsrGraphMmap {
     fn dense_to_orig(&self) -> &[u32] {
         &self.dense_to_orig
     }
-    fn redirects_passed(&self) -> &FxHashMap<(u32, u32), u32> {
+    fn redirects_passed(&self) -> &Self::RedirectsPassedType {
         &self.redirects_passed
     }
 }
@@ -120,8 +126,8 @@ pub fn build_csr_with_adjacency_list(
     offsets.push(0);
     reverse_offsets.push(0);
 
-    for row_title in &dense_to_orig {
-        if let Some(neighbors) = adjacency_list.get(row_title) {
+    for orig_id in &dense_to_orig {
+        if let Some(neighbors) = adjacency_list.get(orig_id) {
             let mut dense_neighbors: Vec<u32> = neighbors
                 .iter()
                 .filter_map(|to| orig_to_dense.get(to).copied())
@@ -132,7 +138,7 @@ pub fn build_csr_with_adjacency_list(
         offsets.push(edges.len() as u32);
 
         // building reverse edges
-        if let Some(neighbors) = reverse_adjacency_list.get(row_title) {
+        if let Some(neighbors) = reverse_adjacency_list.get(orig_id) {
             let mut dense_neighbors: Vec<u32> = neighbors
                 .iter()
                 .filter_map(|to| orig_to_dense.get(to).copied())

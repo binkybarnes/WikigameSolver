@@ -81,6 +81,14 @@ pub fn write_u32_vec_to_file(v: &Vec<u32>, path: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
+pub fn write_u8_vec_to_file(v: &Vec<u8>, path: &str) -> anyhow::Result<()> {
+    println!("Writing u8 vector to file");
+    let mut file = File::create(path)?;
+    file.write_all(v)?;
+    file.sync_all()?;
+    Ok(())
+}
+
 /// Memory-map file and return the Mmap object.
 pub fn mmap_file(path: &str) -> anyhow::Result<Mmap> {
     let file = File::open(path)?;
