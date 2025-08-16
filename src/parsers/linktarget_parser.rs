@@ -9,10 +9,10 @@ use std::io::{self, BufRead, BufReader, BufWriter, Read, Write};
 
 // basically same as redirect_parser::build_redirect_targets
 // because pl_target_id in pagelinks uses the id in linktargets
-pub fn build_linktargets(
+pub fn build_linktargets_dense(
     path: &str,
-    title_to_id: &FxHashMap<String, u32>,
-) -> anyhow::Result<(FxHashMap<u32, u32>)> {
+    title_to_dense_id: &FxHashMap<String, u32>,
+) -> anyhow::Result<FxHashMap<u32, u32>> {
     let file = File::open(path)?;
     let metadata = file.metadata()?;
     let file_size = metadata.len();
@@ -35,11 +35,9 @@ pub fn build_linktargets(
 
     let estimated_matches = 12_000_000; // 11 879 716
 
-    let hasher = FxBuildHasher::default();
-
     // max page id: 80605290, count: 11879716
-    let mut linktargets: FxHashMap<u32, u32> =
-        FxHashMap::with_capacity_and_hasher(estimated_matches, hasher);
+    let mut linktargets_dense: FxHashMap<u32, u32> =
+        FxHashMap::with_capacity_and_hasher(estimated_matches, FxBuildHasher);
 
     const PREFIX: &str = "INSERT INTO `linktarget` VALUES (";
     for line in decompressed_reader.lines() {
@@ -53,14 +51,14 @@ pub fn build_linktargets(
                 let unescaped_title = util::unescape_sql_string(&linktarget_title);
 
                 // skip non existent target_title, ex: Chubchik
-                if let Some(&target_id) = title_to_id.get(&unescaped_title) {
-                    linktargets.insert(linktarget_id, target_id);
+                if let Some(&target_id_dense) = title_to_dense_id.get(&unescaped_title) {
+                    linktargets_dense.insert(linktarget_id, target_id_dense);
                 }
             }
         }
     }
 
-    println!("Total linktargets parsed: {}", linktargets.len());
+    println!("Total linktargets parsed: {}", linktargets_dense.len());
 
-    Ok(linktargets)
+    Ok(linktargets_dense)
 }

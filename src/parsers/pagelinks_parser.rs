@@ -15,9 +15,7 @@ pub trait CsrGraphTrait {
     fn get(&self, dense_node: u32) -> &[u32];
     fn get_reverse(&self, dense_node: u32) -> &[u32];
 
-    fn orig_to_dense(&self) -> &FxHashMap<u32, u32>;
-    fn dense_to_orig(&self) -> &[u32];
-    fn redirects_passed(&self) -> &Self::RedirectsPassedType;
+    fn num_nodes(&self) -> usize;
 }
 
 #[derive(Encode, Decode)]
@@ -26,11 +24,6 @@ pub struct CsrGraph {
     pub edges: Vec<u32>,
     pub reverse_offsets: Vec<u32>,
     pub reverse_edges: Vec<u32>,
-    // page_ids are sparse, so map each page_id to 1, 2, ...
-    pub orig_to_dense: FxHashMap<u32, u32>,
-    pub dense_to_orig: Vec<u32>,
-    // used in reconstruct path after bfs
-    pub redirects_passed: FxHashMap<(u32, u32), u32>,
 }
 impl CsrGraphTrait for CsrGraph {
     type RedirectsPassedType = FxHashMap<(u32, u32), u32>;
@@ -46,14 +39,8 @@ impl CsrGraphTrait for CsrGraph {
         &self.reverse_edges[start..end]
     }
 
-    fn orig_to_dense(&self) -> &FxHashMap<u32, u32> {
-        &self.orig_to_dense
-    }
-    fn dense_to_orig(&self) -> &[u32] {
-        &self.dense_to_orig
-    }
-    fn redirects_passed(&self) -> &Self::RedirectsPassedType {
-        &self.redirects_passed
+    fn num_nodes(&self) -> usize {
+        self.offsets.len()
     }
 }
 
@@ -64,10 +51,6 @@ pub struct CsrGraphMmap {
     // big arrays mmap'd:
     pub edges_mmap: Mmap,
     pub reverse_edges_mmap: Mmap,
-    // small maps still in memory (serialize/deserialize with bitcode)
-    pub orig_to_dense: FxHashMap<u32, u32>,
-    pub dense_to_orig: Vec<u32>,
-    pub redirects_passed: crate::RedirectsPassedMmap,
 }
 
 impl CsrGraphTrait for CsrGraphMmap {
@@ -87,37 +70,21 @@ impl CsrGraphTrait for CsrGraphMmap {
         let end = self.reverse_offsets[dense_node as usize + 1] as usize;
         &revedges[start..end]
     }
-    fn orig_to_dense(&self) -> &FxHashMap<u32, u32> {
-        &self.orig_to_dense
-    }
-    fn dense_to_orig(&self) -> &[u32] {
-        &self.dense_to_orig
-    }
-    fn redirects_passed(&self) -> &Self::RedirectsPassedType {
-        &self.redirects_passed
+
+    fn num_nodes(&self) -> usize {
+        self.offsets.len()
     }
 }
 
 // since some pages don't have links, those ids won't be in the adjacency list
 // so need to base it off of id_to_title which has ids of all pages
 pub fn build_csr_with_adjacency_list(
-    id_to_title: &FxHashMap<u32, String>,
+    orig_to_dense_id: &FxHashMap<u32, u32>,
     adjacency_list: &FxHashMap<u32, Vec<u32>>,
     reverse_adjacency_list: &FxHashMap<u32, Vec<u32>>,
-    redirects_passed: &FxHashMap<(u32, u32), u32>,
 ) -> CsrGraph {
     // terminology: if apple -> banana, apple is the row title, banana is column
-    let hasher = FxBuildHasher::default();
-    let num_nodes = id_to_title.len();
-
-    let mut orig_to_dense: FxHashMap<u32, u32> =
-        FxHashMap::with_capacity_and_hasher(num_nodes, hasher);
-    let mut dense_to_orig: Vec<u32> = Vec::with_capacity(num_nodes);
-
-    for (i, row_title) in id_to_title.keys().enumerate() {
-        orig_to_dense.insert(*row_title, i as u32);
-        dense_to_orig.push(*row_title);
-    }
+    let num_nodes = orig_to_dense_id.len();
 
     let mut offsets = Vec::with_capacity(num_nodes + 1);
     let mut reverse_offsets = Vec::with_capacity(num_nodes + 1);
@@ -126,76 +93,42 @@ pub fn build_csr_with_adjacency_list(
     offsets.push(0);
     reverse_offsets.push(0);
 
-    for orig_id in &dense_to_orig {
-        if let Some(neighbors) = adjacency_list.get(orig_id) {
-            let mut dense_neighbors: Vec<u32> = neighbors
-                .iter()
-                .filter_map(|to| orig_to_dense.get(to).copied())
-                .collect();
+    for dense_id in 0..num_nodes {
+        let dense_id = dense_id as u32;
+        if let Some(mut dense_neighbors) = adjacency_list.get(&dense_id).cloned() {
             dense_neighbors.sort_unstable(); // for locality?
             edges.extend(dense_neighbors);
         }
         offsets.push(edges.len() as u32);
 
         // building reverse edges
-        if let Some(neighbors) = reverse_adjacency_list.get(orig_id) {
-            let mut dense_neighbors: Vec<u32> = neighbors
-                .iter()
-                .filter_map(|to| orig_to_dense.get(to).copied())
-                .collect();
+        if let Some(mut dense_neighbors) = reverse_adjacency_list.get(&dense_id).cloned() {
             dense_neighbors.sort_unstable(); // for locality?
             reverse_edges.extend(dense_neighbors);
         }
         reverse_offsets.push(reverse_edges.len() as u32);
     }
 
-    // translate redirect targets
-    let mut redirects_passed_dense: FxHashMap<(u32, u32), u32> = FxHashMap::default();
-    let mut skip_count = 0;
-    for (&(from_orig, to_orig), &redirect_orig) in redirects_passed.iter() {
-        if let (Some(&from_dense), Some(&to_dense), Some(&redirect_dense)) = (
-            orig_to_dense.get(&from_orig),
-            orig_to_dense.get(&to_orig),
-            orig_to_dense.get(&redirect_orig),
-        ) {
-            redirects_passed_dense.insert((from_dense, to_dense), redirect_dense);
-        } else {
-            skip_count += 1;
-        }
-    }
-
-    println!(
-        "Skipped {} redirects that could not be translated to dense IDs",
-        skip_count
-    );
-
-    println!(
-        "redirect target dense len: {}, redirect targets len: {}",
-        redirects_passed_dense.len(),
-        redirects_passed.len()
-    );
     CsrGraph {
         offsets,
         edges,
         reverse_offsets,
         reverse_edges,
-        orig_to_dense,
-        dense_to_orig,
-        redirects_passed: redirects_passed_dense,
     }
 }
 
 // ugly parser 180s
 // regex
 
-pub fn build_pagelinks(
+pub fn build_pagelinks_dense(
     path: &str,
     linktargets: &FxHashMap<u32, u32>,
     redirect_targets: &FxHashMap<u32, u32>,
+    orig_to_dense_id: &FxHashMap<u32, u32>,
 ) -> anyhow::Result<(
-    FxHashMap<u32, Vec<u32>>,
-    FxHashMap<u32, Vec<u32>>,
-    FxHashMap<(u32, u32), u32>,
+    FxHashMap<u32, Vec<u32>>,   // adj list forward
+    FxHashMap<u32, Vec<u32>>,   // adj list backward
+    FxHashMap<(u32, u32), u32>, // redirects passed
 )> {
     let file = File::open(path)?;
     let metadata = file.metadata()?;
@@ -220,9 +153,8 @@ pub fn build_pagelinks(
 
     let estimated_entries = 19_000_000; // 18 570 593 number of pages?
                                         // 1 598 445 028 edges?
-    let hasher = FxBuildHasher::default();
     let mut pagelinks_adjacency_list: FxHashMap<u32, Vec<u32>> =
-        FxHashMap::with_capacity_and_hasher(estimated_entries, hasher);
+        FxHashMap::with_capacity_and_hasher(estimated_entries, FxBuildHasher);
     // if a link on a page is a redirect, store in the map[(page from, redirect target to), redirect to] so we can turn it back later
     let mut redirects_passed: FxHashMap<(u32, u32), u32> = FxHashMap::default();
 
@@ -235,8 +167,8 @@ pub fn build_pagelinks(
     while decompressed_reader.read_until(b'\n', &mut line_buf)? != 0 {
         parse_line_bytes(
             &line_buf,
-            &linktargets,
-            &redirect_targets,
+            linktargets,
+            redirect_targets,
             &mut pagelinks_adjacency_list,
             &mut redirects_passed,
             &mut skip_count_ns,
@@ -250,16 +182,43 @@ pub fn build_pagelinks(
         neighbors.dedup();
     }
 
-    println!("page_links map length: {}", pagelinks_adjacency_list.len());
+    println!("Translating pagelinks adj list page from to dense id");
+    let mut pagelinks_adjacency_list_dense: FxHashMap<u32, Vec<u32>> =
+        FxHashMap::with_capacity_and_hasher(estimated_entries, FxBuildHasher);
+    // linktargets already made the neighbors dense
+    for (orig_from, neighbors_dense) in pagelinks_adjacency_list.into_iter() {
+        if let Some(&dense_from) = orig_to_dense_id.get(&orig_from) {
+            // neighbors are already dense, just copy them over
+            pagelinks_adjacency_list_dense.insert(dense_from, neighbors_dense);
+        }
+    }
+
+    println!("Translating redirects_passed from page to dense id");
+
+    let mut redirects_passed_dense: FxHashMap<(u32, u32), u32> =
+        FxHashMap::with_capacity_and_hasher(redirects_passed.len(), FxBuildHasher);
+
+    for ((orig_from, redirect_target), redirect) in redirects_passed.into_iter() {
+        if let Some(&dense_from) = orig_to_dense_id.get(&orig_from) {
+            redirects_passed_dense.insert((dense_from, redirect_target), redirect);
+        }
+    }
+
+    println!(
+        "pagelinks_adjacency_list_dense length: {}",
+        pagelinks_adjacency_list_dense.len()
+    );
+
     println!("skipped ns: {}", skip_count_ns);
 
     println!("build incoming pagelinks");
-    let mut incoming_pagelinks_adjacency_list: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
+    let mut incoming_pagelinks_adjacency_list_dense: FxHashMap<u32, Vec<u32>> =
+        FxHashMap::default();
 
     // could also build this alongside the regular pagelinks map, but this is more clear
-    for (&from, to_list) in pagelinks_adjacency_list.iter() {
+    for (&from, to_list) in pagelinks_adjacency_list_dense.iter() {
         for &to in to_list {
-            incoming_pagelinks_adjacency_list
+            incoming_pagelinks_adjacency_list_dense
                 .entry(to)
                 .or_default()
                 .push(from);
@@ -267,9 +226,9 @@ pub fn build_pagelinks(
     }
 
     Ok((
-        pagelinks_adjacency_list,
-        incoming_pagelinks_adjacency_list,
-        redirects_passed,
+        pagelinks_adjacency_list_dense,
+        incoming_pagelinks_adjacency_list_dense,
+        redirects_passed_dense,
     ))
 }
 
@@ -277,8 +236,8 @@ pub fn build_pagelinks(
 // INSERT INTO `pagelinks` VALUES (1939,0,2),(3040,0,2),
 fn parse_line_bytes(
     line_buf: &[u8],
-    linktargets: &FxHashMap<u32, u32>,
-    redirect_targets: &FxHashMap<u32, u32>,
+    linktargets_dense: &FxHashMap<u32, u32>,
+    redirect_targets_dense: &FxHashMap<u32, u32>,
     page_links: &mut FxHashMap<u32, Vec<u32>>,
     redirects_passed: &mut FxHashMap<(u32, u32), u32>,
     skip_count_ns: &mut usize,
@@ -312,7 +271,6 @@ fn parse_line_bytes(
                 std::str::from_utf8(field1).unwrap_or("<invalid>")
             )
         });
-
         i += 1; // skip ','
 
         // -------- Field 2: namespace --------
@@ -342,26 +300,26 @@ fn parse_line_bytes(
             i += 1;
         }
         let field3 = &line_buf[start..i];
-        let page_id_to = atoi::atoi::<u32>(field3).unwrap_or_else(|| {
+        let page_id_to_linktarget = atoi::atoi::<u32>(field3).unwrap_or_else(|| {
             panic!(
                 "Invalid page_id_to: {:?}",
                 std::str::from_utf8(field3).unwrap_or("<invalid>")
             )
         });
 
-        if let Some(mut mapped_target) = linktargets.get(&page_id_to) {
+        if let Some(mut dense_id_to) = linktargets_dense.get(&page_id_to_linktarget) {
             // -------- Resolve redirect --------
             // i take it back im going to NUKE REDIRECTS
             // in the case a page has links to both a redirect and the redirect target,
             // i will keep only one (the redirect will be logged in redirects_passed so itll replace it with the redirect one)
-            if let Some(redirect_target) = redirect_targets.get(mapped_target) {
-                redirects_passed.insert((page_id_from, *redirect_target), *mapped_target);
-                mapped_target = redirect_target;
+            if let Some(redirect_target) = redirect_targets_dense.get(dense_id_to) {
+                redirects_passed.insert((page_id_from, *redirect_target), *dense_id_to);
+                dense_id_to = redirect_target;
             }
             page_links
                 .entry(page_id_from)
                 .or_default()
-                .push(*mapped_target);
+                .push(*dense_id_to);
         }
 
         i += 1; // skip ')'

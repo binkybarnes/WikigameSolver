@@ -6,9 +6,14 @@ use rustc_hash::{FxBuildHasher, FxHashMap};
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, BufWriter, Read, Write};
 
-pub fn build_title_maps(
+pub fn build_title_maps_dense(
     path: &str,
-) -> anyhow::Result<(FxHashMap<String, u32>, FxHashMap<u32, String>)> {
+) -> anyhow::Result<(
+    FxHashMap<u32, u32>,    // orig_to_dense_id
+    Vec<u32>,               // dense_id_to_orig
+    FxHashMap<String, u32>, // title_to_dense_id
+    Vec<String>,            // dense_id_to_title
+)> {
     let file = File::open(path)?;
     let metadata = file.metadata()?;
     let file_size = metadata.len();
@@ -31,11 +36,10 @@ pub fn build_title_maps(
 
     let estimated_matches = 19_000_000; // 18 570 593
 
-    let hasher = FxBuildHasher::default();
     let mut title_to_id: FxHashMap<String, u32> =
-        FxHashMap::with_capacity_and_hasher(estimated_matches, hasher);
+        FxHashMap::with_capacity_and_hasher(estimated_matches, FxBuildHasher);
     let mut id_to_title: FxHashMap<u32, String> =
-        FxHashMap::with_capacity_and_hasher(estimated_matches, hasher);
+        FxHashMap::with_capacity_and_hasher(estimated_matches, FxBuildHasher);
 
     const PREFIX: &str = "INSERT INTO `page` VALUES (";
     for line in decompressed_reader.lines() {
@@ -43,6 +47,9 @@ pub fn build_title_maps(
         if line.starts_with(PREFIX) {
             for cap in tuple_re.captures_iter(&line) {
                 let page_id: u32 = cap[1].parse()?;
+                if page_id == 53251 {
+                    println!("found 53251");
+                }
                 let raw_title = &cap[2];
 
                 // Handle escaped stuff
@@ -56,5 +63,38 @@ pub fn build_title_maps(
 
     println!("Total titles parsed: {}", title_to_id.len());
 
-    Ok((title_to_id, id_to_title))
+    println!("building dense id maps");
+    let num_nodes = id_to_title.len();
+    let mut orig_to_dense_id: FxHashMap<u32, u32> =
+        FxHashMap::with_capacity_and_hasher(num_nodes, FxBuildHasher);
+    let mut dense_id_to_orig: Vec<u32> = Vec::with_capacity(num_nodes);
+
+    for (i, orig_id) in id_to_title.keys().enumerate() {
+        orig_to_dense_id.insert(*orig_id, i as u32);
+        dense_id_to_orig.push(*orig_id);
+    }
+
+    println!("Converting title_to_id and id_to_title to dense ids");
+    let mut dense_title_to_id: FxHashMap<String, u32> =
+        FxHashMap::with_capacity_and_hasher(num_nodes, FxBuildHasher);
+    let mut dense_id_to_title: Vec<String> = Vec::with_capacity(num_nodes);
+
+    for (title, orig_id) in title_to_id.into_iter() {
+        if let Some(&dense_id) = orig_to_dense_id.get(&orig_id) {
+            dense_title_to_id.insert(title.clone(), dense_id);
+        }
+    }
+
+    for (orig_id, title) in id_to_title.into_iter() {
+        if let Some(&dense_id) = orig_to_dense_id.get(&orig_id) {
+            dense_id_to_title.insert(dense_id as usize, title.clone());
+        }
+    }
+
+    Ok((
+        orig_to_dense_id,
+        dense_id_to_orig,
+        dense_title_to_id,
+        dense_id_to_title,
+    ))
 }
