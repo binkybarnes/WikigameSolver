@@ -8,7 +8,7 @@ pub fn build_and_save_page_maps_dense() -> anyhow::Result<()> {
         Vec<u32>,               // dense_id_to_orig
         FxHashMap<String, u32>, // title_to_dense_id
         Vec<String>,            // dense_id_to_title
-    ) = page_parser::build_title_maps_dense("../sql_files/enwiki-latest-page.sql.gz")?;
+    ) = build_title_maps_dense("../sql_files/enwiki-latest-page.sql.gz")?;
 
     util::save_to_file(&orig_to_dense_id, "data/orig_to_dense_id.bin")?;
     util::save_to_file(&dense_id_to_orig, "data/dense_id_to_orig.bin")?;

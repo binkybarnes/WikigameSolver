@@ -2,10 +2,9 @@ use crate::util;
 use flate2::read::GzDecoder;
 use indicatif::{ProgressBar, ProgressStyle};
 use regex::Regex;
-use rustc_hash::{FxBuildHasher, FxHashMap};
-use serde::{Deserialize, Serialize};
+use rustc_hash::FxHashMap;
 use std::fs::File;
-use std::io::{self, BufRead, BufReader, BufWriter, Read, Write};
+use std::io::{BufRead, BufReader};
 
 pub fn build_redirect_targets_dense(
     path: &str,

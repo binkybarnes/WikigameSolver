@@ -1,18 +1,13 @@
-use crate::pagelinks_parser;
-use crate::redirect_parser;
-use crate::search;
 use bitcode::Decode;
 use bitcode::Encode;
 use bytemuck::cast_slice;
 use memmap2::Mmap;
-use rustc_hash::{FxBuildHasher, FxHashMap};
-use serde::{de::DeserializeOwned, Serialize};
 use std::fs::create_dir_all;
 use std::io::Read;
 use std::path::Path;
 use std::{
     fs::File,
-    io::{self, BufReader, BufWriter, Write},
+    io::{BufReader, BufWriter, Write},
 };
 
 pub fn unescape_sql_string(s: &str) -> String {

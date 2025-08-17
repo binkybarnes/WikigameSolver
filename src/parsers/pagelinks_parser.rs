@@ -1,13 +1,9 @@
-use crate::util;
-use bitcode::{Decode, Encode};
 use flate2::read::GzDecoder;
 use indicatif::{ProgressBar, ProgressStyle};
-use memmap2::Mmap;
-use regex::Regex;
 use rustc_hash::{FxBuildHasher, FxHashMap};
 
 use std::fs::File;
-use std::io::{self, BufRead, BufReader, BufWriter, Read, Write};
+use std::io::{BufRead, BufReader};
 
 pub fn build_pagelinks_dense(
     path: &str,

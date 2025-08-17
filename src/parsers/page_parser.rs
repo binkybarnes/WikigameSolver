@@ -4,7 +4,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 use regex::Regex;
 use rustc_hash::{FxBuildHasher, FxHashMap};
 use std::fs::File;
-use std::io::{self, BufRead, BufReader, BufWriter, Read, Write};
+use std::io::{BufRead, BufReader};
 
 pub fn build_title_maps_dense(
     path: &str,

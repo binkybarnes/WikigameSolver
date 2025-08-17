@@ -4,22 +4,10 @@ mod mmap_structs;
 mod parsers;
 mod search;
 mod util;
-use memmap2::Mmap;
-use parsers::linktarget_parser;
-use parsers::page_parser;
-use parsers::pagelinks_parser;
-use parsers::redirect_parser;
-use rustc_hash::{FxBuildHasher, FxHashMap};
-use std::any;
-use std::cmp::Ordering;
-use std::{
-    fs::File,
-    io::{BufRead, BufReader},
-    process::id,
-    thread,
-    time::{Duration, Instant},
-};
 
+use std::time::Instant;
+
+use crate::builders::*;
 use crate::graph::*;
 use crate::mmap_structs::*;
 
@@ -41,22 +29,22 @@ use crate::mmap_structs::*;
 fn main() -> anyhow::Result<()> {
     let now = Instant::now();
 
-    // // build and save normal structures
-    // build_and_save_page_maps_dense()?;
-    // // ↓
-    // build_and_save_linktargets_dense()?;
-    // build_and_save_redirect_targets_dense()?;
-    // // ↓
-    // build_and_save_pagelinks_adj_list()?;
-    // // ↓
-    // build_and_save_pagelinks_csr()?;
+    // build and save normal structures
+    build_and_save_page_maps_dense()?;
+    // ↓
+    build_and_save_linktargets_dense()?;
+    build_and_save_redirect_targets_dense()?;
+    // ↓
+    build_and_save_pagelinks_adj_list()?;
+    // ↓
+    build_and_save_pagelinks_csr()?;
 
-    // // build and save mmap structures
-    // build_and_save_title_to_dense_id_mmap()?;
-    // build_and_save_dense_id_to_title_mmap()?;
-    // build_and_save_pagelinks_csr()?;
-    // build_and_save_redirects_passed_mmap()?;
-    // build_and_save_redirect_targets_dense_mmap()?;
+    // build and save mmap structures
+    build_and_save_title_to_dense_id_mmap()?;
+    build_and_save_dense_id_to_title_mmap()?;
+    build_and_save_pagelinks_csr()?;
+    build_and_save_redirects_passed_mmap()?;
+    build_and_save_redirect_targets_dense_mmap()?;
 
     // load normal structures
     // let csr_graph: CsrGraph = util::load_from_file("data/pagelinks_csr.bin")?;

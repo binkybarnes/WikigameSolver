@@ -13,7 +13,7 @@ pub fn build_and_save_pagelinks_adj_list() -> anyhow::Result<()> {
         FxHashMap<u32, Vec<u32>>,
         FxHashMap<u32, Vec<u32>>,
         FxHashMap<(u32, u32), u32>,
-    ) = pagelinks_parser::build_pagelinks_dense(
+    ) = build_pagelinks_dense(
         "../sql_files/enwiki-latest-pagelinks.sql.gz",
         &linktargets_dense,
         &redirect_targets_dense,

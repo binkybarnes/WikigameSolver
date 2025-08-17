@@ -7,7 +7,7 @@ pub fn build_and_save_redirect_targets_dense() -> anyhow::Result<()> {
         util::load_from_file("data/title_to_dense_id.bin")?;
     let orig_to_dense_id: FxHashMap<u32, u32> = util::load_from_file("data/orig_to_dense_id.bin")?;
 
-    let redirect_targets_dense: Vec<u32> = redirect_parser::build_redirect_targets_dense(
+    let redirect_targets_dense: Vec<u32> = build_redirect_targets_dense(
         "../sql_files/enwiki-latest-redirect.sql.gz",
         &title_to_dense_id,
         &orig_to_dense_id,

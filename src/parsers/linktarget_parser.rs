@@ -3,9 +3,8 @@ use flate2::read::GzDecoder;
 use indicatif::{ProgressBar, ProgressStyle};
 use regex::Regex;
 use rustc_hash::{FxBuildHasher, FxHashMap};
-use serde::{Deserialize, Serialize};
 use std::fs::File;
-use std::io::{self, BufRead, BufReader, BufWriter, Read, Write};
+use std::io::{BufRead, BufReader};
 
 // basically same as redirect_parser::build_redirect_targets
 // because pl_target_id in pagelinks uses the id in linktargets

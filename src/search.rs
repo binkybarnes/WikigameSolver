@@ -8,7 +8,6 @@ use std::{
 
 use crate::graph::*;
 use crate::mmap_structs::*;
-use crate::parsers::*;
 
 fn process_neighbor(
     neighbor: u32,
@@ -942,7 +941,7 @@ pub fn bfs_interactive_session<G>(
     println!("Exiting interactive session.");
 }
 
-use rand::{seq::IteratorRandom, Rng};
+use rand::Rng;
 pub fn benchmark_random_bfs<G>(
     graph: &G,
     redirect_targets_dense: &FxHashMap<u32, u32>,
