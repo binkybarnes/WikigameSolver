@@ -138,8 +138,8 @@ pub fn build_and_save_pagelinks_csr() -> anyhow::Result<()> {
     util::write_u32_vec_to_file(&pagelinks_csr.edges, "data/csr/edges.bin")?;
     util::write_u32_vec_to_file(&pagelinks_csr.reverse_edges, "data/csr/reverse_edges.bin")?;
 
-    util::save_to_file(&pagelinks_csr.offsets, "data/csr/offsets.bin")?;
-    util::save_to_file(
+    util::write_u32_vec_to_file(&pagelinks_csr.offsets, "data/csr/offsets.bin")?;
+    util::write_u32_vec_to_file(
         &pagelinks_csr.reverse_offsets,
         "data/csr/reverse_offsets.bin",
     )?;
@@ -152,9 +152,8 @@ pub fn load_csr_graph_mmap() -> anyhow::Result<CsrGraphMmap> {
     let edges_mmap: Mmap = util::mmap_file("data/csr/edges.bin")?;
     let reverse_edges_mmap: Mmap = util::mmap_file("data/csr/reverse_edges.bin")?;
 
-    // Load smaller arrays / maps into memory
-    let offsets: Vec<u32> = util::load_from_file("data/csr/offsets.bin")?;
-    let reverse_offsets: Vec<u32> = util::load_from_file("data/csr/reverse_offsets.bin")?;
+    let offsets: Mmap = util::mmap_file("data/csr/offsets.bin")?;
+    let reverse_offsets: Mmap = util::mmap_file("data/csr/reverse_offsets.bin")?;
 
     Ok(CsrGraphMmap {
         offsets,
@@ -166,7 +165,7 @@ pub fn load_csr_graph_mmap() -> anyhow::Result<CsrGraphMmap> {
 
 // going to replace pub redirects_passed: FxHashMap<(u32, u32), u32>, inside of csr_graph
 pub struct RedirectsPassedMmap {
-    pub offsets: Vec<u32>,           // Vec<u32>
+    pub offsets: Mmap,               // Vec<u32>
     pub redirect_targets_mmap: Mmap, // Vec<u32>
     pub redirects_mmap: Mmap,        // Vec<u32>
                                      // dense ids
@@ -190,7 +189,8 @@ impl RedirectsPassedTrait for RedirectsPassedMmap {
 impl RedirectsPassedMmap {
     /// Return the redirect for a given (page_from, target_id) if it exists
     pub fn get(&self, page_from: u32, target_id: u32) -> Option<u32> {
-        let offsets = &self.offsets;
+        let offsets: &[u32] = util::mmap_as_u32_slice(&self.offsets);
+
         let start = offsets[page_from as usize] as usize;
         let end = offsets[page_from as usize + 1] as usize;
 
@@ -251,7 +251,7 @@ pub fn build_and_save_redirects_passed_mmap() -> anyhow::Result<()> {
     }
 
     // Step 4: save to disk
-    util::save_to_file(&offsets, "data/redirects_passed/offsets.bin")?;
+    util::write_u32_vec_to_file(&offsets, "data/redirects_passed/offsets.bin")?;
     util::write_u32_vec_to_file(
         &redirect_targets,
         "data/redirects_passed/redirect_targets.bin",
@@ -262,7 +262,7 @@ pub fn build_and_save_redirects_passed_mmap() -> anyhow::Result<()> {
 }
 
 pub fn load_redirects_passed_mmap() -> anyhow::Result<RedirectsPassedMmap> {
-    let offsets: Vec<u32> = util::load_from_file("data/redirects_passed/offsets.bin")?;
+    let offsets = util::mmap_file("data/redirects_passed/offsets.bin")?;
     let redirect_targets_mmap = util::mmap_file("data/redirects_passed/redirect_targets.bin")?;
     let redirects_mmap = util::mmap_file("data/redirects_passed/redirects.bin")?;
 
@@ -275,28 +275,31 @@ pub fn load_redirects_passed_mmap() -> anyhow::Result<RedirectsPassedMmap> {
 
 pub struct TitleToDenseIdMmap {
     // sorted so can perform binary search
-    pub titles: Mmap,
-    pub offsets: Vec<u32>,
-    pub dense_ids: Vec<u32>,
+    pub titles: Mmap,    // Vec<u8> blob of characters?
+    pub offsets: Mmap,   // Vec<u32>
+    pub dense_ids: Mmap, // Vec<u32>
 }
 
 impl TitleToDenseIdMmap {
     // given title, return dense id via binary search
     // courtesy of mister gippity
     pub fn get(&self, title: &str) -> Option<u32> {
+        let offsets: &[u32] = util::mmap_as_u32_slice(&self.offsets);
+        let dense_ids: &[u32] = util::mmap_as_u32_slice(&self.dense_ids);
+
         let bytes = &self.titles[..];
         let needle = title.as_bytes();
 
-        let n = self.dense_ids.len(); // number of titles
+        let n = dense_ids.len(); // number of titles
         let mut lo = 0usize;
         let mut hi = n; // search in [lo, hi)
 
         while lo < hi {
             let mid = (lo + hi) / 2;
-            let start = self.offsets[mid] as usize;
+            let start = offsets[mid] as usize;
             // Support either offsets.len() == n or n+1 (with sentinel)
-            let end = if mid + 1 < self.offsets.len() {
-                self.offsets[mid + 1] as usize
+            let end = if mid + 1 < offsets.len() {
+                offsets[mid + 1] as usize
             } else {
                 bytes.len()
             };
@@ -305,7 +308,7 @@ impl TitleToDenseIdMmap {
             match s_bytes.cmp(needle) {
                 Ordering::Less => lo = mid + 1,
                 Ordering::Greater => hi = mid,
-                Ordering::Equal => return Some(self.dense_ids[mid]),
+                Ordering::Equal => return Some(dense_ids[mid]),
             }
         }
         None
@@ -333,16 +336,16 @@ pub fn build_and_save_title_to_dense_id_mmap() -> anyhow::Result<()> {
 
     // Step 3: save
     util::write_u8_vec_to_file(&titles_blob, "data/title_to_dense_id/titles.bin")?;
-    util::save_to_file(&offsets, "data/title_to_dense_id/offsets.bin")?;
-    util::save_to_file(&dense_ids, "data/title_to_dense_id/dense_ids.bin")?;
+    util::write_u32_vec_to_file(&offsets, "data/title_to_dense_id/offsets.bin")?;
+    util::write_u32_vec_to_file(&dense_ids, "data/title_to_dense_id/dense_ids.bin")?;
 
     Ok(())
 }
 
 pub fn load_title_to_dense_id_mmap() -> anyhow::Result<TitleToDenseIdMmap> {
     let titles = util::mmap_file("data/title_to_dense_id/titles.bin")?;
-    let offsets: Vec<u32> = util::load_from_file("data/title_to_dense_id/offsets.bin")?;
-    let dense_ids: Vec<u32> = util::load_from_file("data/title_to_dense_id/dense_ids.bin")?;
+    let offsets = util::mmap_file("data/title_to_dense_id/offsets.bin")?;
+    let dense_ids = util::mmap_file("data/title_to_dense_id/dense_ids.bin")?;
 
     Ok(TitleToDenseIdMmap {
         titles,
@@ -352,14 +355,15 @@ pub fn load_title_to_dense_id_mmap() -> anyhow::Result<TitleToDenseIdMmap> {
 }
 
 pub struct DenseIdToTitleMmap {
-    pub titles: Mmap,
-    pub offsets: Vec<u32>,
+    pub titles: Mmap,  // Vec<u8> character blob
+    pub offsets: Mmap, // Vec<u32>
 }
 
 impl DenseIdToTitleMmap {
     pub fn get(&self, dense_id: u32) -> &str {
-        let start = self.offsets[dense_id as usize] as usize;
-        let end = self.offsets[dense_id as usize + 1] as usize;
+        let offsets: &[u32] = util::mmap_as_u32_slice(&self.offsets);
+        let start = offsets[dense_id as usize] as usize;
+        let end = offsets[dense_id as usize + 1] as usize;
         std::str::from_utf8(&self.titles[start..end]).unwrap()
     }
 }
@@ -379,14 +383,14 @@ pub fn build_and_save_dense_id_to_title_mmap() -> anyhow::Result<()> {
 
     // Save to disk
     util::write_u8_vec_to_file(&titles, "data/dense_id_to_title/titles.bin")?;
-    util::save_to_file(&offsets, "data/dense_id_to_title/offsets.bin")?;
+    util::write_u32_vec_to_file(&offsets, "data/dense_id_to_title/offsets.bin")?;
 
     Ok(())
 }
 
 pub fn load_dense_id_to_title_mmap() -> anyhow::Result<DenseIdToTitleMmap> {
     let titles: Mmap = util::mmap_file("data/dense_id_to_title/titles.bin")?;
-    let offsets: Vec<u32> = util::load_from_file("data/dense_id_to_title/offsets.bin")?;
+    let offsets: Mmap = util::mmap_file("data/dense_id_to_title/offsets.bin")?;
 
     Ok(DenseIdToTitleMmap { titles, offsets })
 }

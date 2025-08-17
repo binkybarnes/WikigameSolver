@@ -46,8 +46,8 @@ impl CsrGraphTrait for CsrGraph {
 
 pub struct CsrGraphMmap {
     // small arrays that are cheap to keep in RAM:
-    pub offsets: Vec<u32>, // you can mmap this too if offsets huge
-    pub reverse_offsets: Vec<u32>,
+    pub offsets: Mmap,         // Vec<u32>
+    pub reverse_offsets: Mmap, // Vec<u32>
     // big arrays mmap'd:
     pub edges_mmap: Mmap,
     pub reverse_edges_mmap: Mmap,
@@ -58,16 +58,18 @@ impl CsrGraphTrait for CsrGraphMmap {
 
     /// get neighbors as a slice by casting the mmap bytes to u32 slice
     fn get(&self, dense_node: u32) -> &[u32] {
+        let offsets: &[u32] = util::mmap_as_u32_slice(&self.offsets);
         let edges: &[u32] = util::mmap_as_u32_slice(&self.edges_mmap);
-        let start = self.offsets[dense_node as usize] as usize;
-        let end = self.offsets[dense_node as usize + 1] as usize;
+        let start = offsets[dense_node as usize] as usize;
+        let end = offsets[dense_node as usize + 1] as usize;
         &edges[start..end]
     }
 
     fn get_reverse(&self, dense_node: u32) -> &[u32] {
+        let reverse_offsets: &[u32] = util::mmap_as_u32_slice(&self.reverse_offsets);
         let revedges: &[u32] = util::mmap_as_u32_slice(&self.reverse_edges_mmap);
-        let start = self.reverse_offsets[dense_node as usize] as usize;
-        let end = self.reverse_offsets[dense_node as usize + 1] as usize;
+        let start = reverse_offsets[dense_node as usize] as usize;
+        let end = reverse_offsets[dense_node as usize + 1] as usize;
         &revedges[start..end]
     }
 
