@@ -7,6 +7,7 @@ use parsers::page_parser;
 use parsers::pagelinks_parser;
 use parsers::redirect_parser;
 use rustc_hash::{FxBuildHasher, FxHashMap};
+use std::any;
 use std::cmp::Ordering;
 use std::{
     fs::File,
@@ -58,7 +59,7 @@ pub fn build_and_save_redirect_targets_dense() -> anyhow::Result<()> {
         util::load_from_file("data/title_to_dense_id.bin")?;
     let orig_to_dense_id: FxHashMap<u32, u32> = util::load_from_file("data/orig_to_dense_id.bin")?;
 
-    let redirect_targets_dense = redirect_parser::build_redirect_targets_dense(
+    let redirect_targets_dense: Vec<u32> = redirect_parser::build_redirect_targets_dense(
         "../sql_files/enwiki-latest-redirect.sql.gz",
         &title_to_dense_id,
         &orig_to_dense_id,
@@ -71,7 +72,7 @@ pub fn build_and_save_redirect_targets_dense() -> anyhow::Result<()> {
 pub fn build_and_save_linktargets_dense() -> anyhow::Result<()> {
     let title_to_id: FxHashMap<String, u32> = util::load_from_file("data/title_to_dense_id.bin")?;
 
-    let linktargets_dense = linktarget_parser::build_linktargets_dense(
+    let linktargets_dense: FxHashMap<u32, u32> = linktarget_parser::build_linktargets_dense(
         "../sql_files/enwiki-latest-linktarget.sql.gz",
         &title_to_id,
     )?;
@@ -165,10 +166,10 @@ pub fn load_csr_graph_mmap() -> anyhow::Result<CsrGraphMmap> {
 
 // going to replace pub redirects_passed: FxHashMap<(u32, u32), u32>, inside of csr_graph
 pub struct RedirectsPassedMmap {
-    pub offsets: Vec<u32>,
-    pub redirect_targets_mmap: Mmap,
-    pub redirects_mmap: Mmap,
-    // dense ids
+    pub offsets: Vec<u32>,           // Vec<u32>
+    pub redirect_targets_mmap: Mmap, // Vec<u32>
+    pub redirects_mmap: Mmap,        // Vec<u32>
+                                     // dense ids
 }
 
 pub trait RedirectsPassedTrait {
@@ -390,6 +391,39 @@ pub fn load_dense_id_to_title_mmap() -> anyhow::Result<DenseIdToTitleMmap> {
     Ok(DenseIdToTitleMmap { titles, offsets })
 }
 
+pub struct RedirectTargetsDenseMmap {
+    pub mmap: Mmap, // raw bytes
+                    // pub len: usize, // number of u32 elements
+}
+
+impl RedirectTargetsDenseMmap {
+    /// Get the target for a dense_id, returns u32::MAX if no redirect
+    pub fn get(&self, dense_id: u32) -> u32 {
+        // if dense_id as usize >= self.len {
+        //     return u32::MAX;
+        // }
+        let start = dense_id as usize * 4;
+        let end = start + 4;
+        let bytes = &self.mmap[start..end];
+        u32::from_le_bytes(bytes.try_into().unwrap())
+    }
+}
+
+pub fn build_and_save_redirect_targets_dense_mmap() -> anyhow::Result<()> {
+    let redirect_targets_dense: Vec<u32> = util::load_from_file("data/redirect_targets_dense.bin")?;
+    util::write_u32_vec_to_file(
+        &redirect_targets_dense,
+        "data/redirect_targets_dense/redirect_targets_dense.bin",
+    )?;
+    Ok(())
+}
+
+pub fn load_redirect_targets_dense_mmap() -> anyhow::Result<RedirectTargetsDenseMmap> {
+    let mmap: Mmap = util::mmap_file("data/redirect_targets_dense/redirect_targets_dense.bin")?;
+    // let len = mmap.len() / 4; // number of u32 elements
+    Ok(RedirectTargetsDenseMmap { mmap })
+}
+
 fn main() -> anyhow::Result<()> {
     let now = Instant::now();
 
@@ -408,23 +442,23 @@ fn main() -> anyhow::Result<()> {
     // build_and_save_dense_id_to_title_mmap()?;
     // build_and_save_pagelinks_csr()?;
     // build_and_save_redirects_passed_mmap()?;
+    // build_and_save_redirect_targets_dense_mmap()?;
 
     // load normal structures
-    let redirect_targets_dense: FxHashMap<u32, u32> =
-        util::load_from_file("data/redirect_targets_dense.bin")?;
     // let csr_graph: CsrGraph = util::load_from_file("data/pagelinks_csr.bin")?;
 
-    // load mmap structures
+    // // load mmap structures
     let title_to_dense_id_mmap: TitleToDenseIdMmap = load_title_to_dense_id_mmap()?;
     let dense_id_to_title_mmap: DenseIdToTitleMmap = load_dense_id_to_title_mmap()?;
     let redirects_passed_mmap: RedirectsPassedMmap = load_redirects_passed_mmap()?;
+    let redirect_targets_dense_mmap: RedirectTargetsDenseMmap = load_redirect_targets_dense_mmap()?;
     let csr_graph_mmap: CsrGraphMmap = load_csr_graph_mmap()?;
 
     search::bfs_interactive_session(
         &title_to_dense_id_mmap,
         &dense_id_to_title_mmap,
         &csr_graph_mmap,
-        &redirect_targets_dense,
+        &redirect_targets_dense_mmap,
         &redirects_passed_mmap,
     );
 
@@ -438,9 +472,6 @@ fn main() -> anyhow::Result<()> {
     // loop {
     //     thread::sleep(Duration::from_secs(60));
     // }
-
-    // let orig_to_dense_id: FxHashMap<u32, u32> = util::load_from_file("data/orig_to_dense_id.bin")?;
-    // println!("{}", orig_to_dense_id.get(&53251).unwrap());
 
     let elapsed = now.elapsed();
     println!("Elapsed: {:.2?}", elapsed);

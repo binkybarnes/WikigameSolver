@@ -11,7 +11,7 @@ pub fn build_redirect_targets_dense(
     path: &str,
     title_to_dense_id: &FxHashMap<String, u32>,
     orig_to_dense_id: &FxHashMap<u32, u32>,
-) -> anyhow::Result<FxHashMap<u32, u32>> {
+) -> anyhow::Result<Vec<u32>> {
     let file = File::open(path)?;
     let metadata = file.metadata()?;
     let file_size = metadata.len();
@@ -32,13 +32,11 @@ pub fn build_redirect_targets_dense(
     // (10 -> page_id,0 -> main namespace,'Computer_accessibility' -> redirect_target
     let tuple_re = Regex::new(r"\((\d+),0,'((?:[^'\\]|\\.)*)'").unwrap();
 
-    let estimated_matches = 12_000_000; // 11 879 716
-
-    let hasher = FxBuildHasher::default();
-
     // max page id: 80605290, count: 11879716
-    let mut redirect_targets_dense: FxHashMap<u32, u32> =
-        FxHashMap::with_capacity_and_hasher(estimated_matches, hasher);
+    // let mut redirect_targets_dense: FxHashMap<u32, u32> =
+    //     FxHashMap::with_capacity_and_hasher(estimated_matches, hasher);
+    let num_nodes = orig_to_dense_id.len();
+    let mut redirect_targets_dense: Vec<u32> = vec![u32::MAX; num_nodes];
 
     // let mut skipped_ids = Vec::new();
 
@@ -64,7 +62,7 @@ pub fn build_redirect_targets_dense(
                 // skip non existent target_title, ex: Chubchik
                 // maybe also skip non existent rd_from
                 if let Some(&target_dense_id) = title_to_dense_id.get(&unescaped_title) {
-                    redirect_targets_dense.insert(dense_id, target_dense_id);
+                    redirect_targets_dense[dense_id as usize] = target_dense_id;
                 }
             }
         }

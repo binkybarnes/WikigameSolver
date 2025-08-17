@@ -8,7 +8,7 @@ use std::{
 
 use crate::{
     parsers::pagelinks_parser::{self, CsrGraphTrait},
-    RedirectsPassedMmap, RedirectsPassedTrait,
+    RedirectTargetsDenseMmap, RedirectsPassedMmap, RedirectsPassedTrait,
 };
 
 fn process_neighbor(
@@ -981,7 +981,8 @@ pub fn bfs_interactive_session<G>(
     // adj_graph: &FxHashMap<u32, Vec<u32>>,
     // adj_graph_bwd: &FxHashMap<u32, Vec<u32>>,
     // redirect_targets: &FxHashMap<u32, u32>,
-    dense_redirect_targets: &FxHashMap<u32, u32>,
+    dense_redirect_targets: &RedirectTargetsDenseMmap,
+    // dense_redirect_targets: &FxHashMap<u32, u32>,
     redirects_passed: &RedirectsPassedMmap,
     // redirects_passed: &FxHashMap<(u32, u32), u32>,
 ) where
@@ -1027,11 +1028,14 @@ pub fn bfs_interactive_session<G>(
         let mut goal_id = goal_id_raw;
 
         // Resolve redirects
-        if let Some(&redirect_target) = dense_redirect_targets.get(&start_id) {
-            start_id = redirect_target;
+        let redirect = dense_redirect_targets.get(start_id);
+        if redirect != u32::MAX {
+            start_id = redirect;
         }
-        if let Some(&redirect_target) = dense_redirect_targets.get(&goal_id) {
-            goal_id = redirect_target;
+
+        let redirect = dense_redirect_targets.get(goal_id);
+        if redirect != u32::MAX {
+            goal_id = redirect;
         }
 
         let max_depth = 50;

@@ -36,9 +36,9 @@ pub fn build_title_maps_dense(
 
     let estimated_matches = 19_000_000; // 18 570 593
 
-    let mut title_to_id: FxHashMap<String, u32> =
+    let mut title_to_orig_id: FxHashMap<String, u32> =
         FxHashMap::with_capacity_and_hasher(estimated_matches, FxBuildHasher);
-    let mut id_to_title: FxHashMap<u32, String> =
+    let mut orig_id_to_title: FxHashMap<u32, String> =
         FxHashMap::with_capacity_and_hasher(estimated_matches, FxBuildHasher);
 
     const PREFIX: &str = "INSERT INTO `page` VALUES (";
@@ -55,21 +55,21 @@ pub fn build_title_maps_dense(
                 // Handle escaped stuff
                 let unescaped_title = util::unescape_sql_string(&raw_title);
 
-                title_to_id.insert(unescaped_title.clone(), page_id);
-                id_to_title.insert(page_id, unescaped_title);
+                title_to_orig_id.insert(unescaped_title.clone(), page_id);
+                orig_id_to_title.insert(page_id, unescaped_title);
             }
         }
     }
 
-    println!("Total titles parsed: {}", title_to_id.len());
+    println!("Total titles parsed: {}", title_to_orig_id.len());
 
     println!("building dense id maps");
-    let num_nodes = id_to_title.len();
+    let num_nodes = orig_id_to_title.len();
     let mut orig_to_dense_id: FxHashMap<u32, u32> =
         FxHashMap::with_capacity_and_hasher(num_nodes, FxBuildHasher);
     let mut dense_id_to_orig: Vec<u32> = Vec::with_capacity(num_nodes);
 
-    for (i, orig_id) in id_to_title.keys().enumerate() {
+    for (i, orig_id) in orig_id_to_title.keys().enumerate() {
         orig_to_dense_id.insert(*orig_id, i as u32);
         dense_id_to_orig.push(*orig_id);
     }
@@ -79,13 +79,13 @@ pub fn build_title_maps_dense(
         FxHashMap::with_capacity_and_hasher(num_nodes, FxBuildHasher);
     let mut dense_id_to_title: Vec<String> = Vec::with_capacity(num_nodes);
 
-    for (title, orig_id) in title_to_id.into_iter() {
+    for (title, orig_id) in title_to_orig_id.into_iter() {
         if let Some(&dense_id) = orig_to_dense_id.get(&orig_id) {
             dense_title_to_id.insert(title.clone(), dense_id);
         }
     }
 
-    for (orig_id, title) in id_to_title.into_iter() {
+    for (orig_id, title) in orig_id_to_title.into_iter() {
         if let Some(&dense_id) = orig_to_dense_id.get(&orig_id) {
             dense_id_to_title.insert(dense_id as usize, title.clone());
         }
