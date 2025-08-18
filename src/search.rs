@@ -592,7 +592,6 @@ where
             };
 
             for &neighbor in neighbors {
-                //.iter().take(100) {
                 process_neighbor_bi(
                     neighbor,
                     next_depth,
@@ -611,7 +610,7 @@ where
 
     if meet_found_at_depth.is_some() {
         let elapsed = now.elapsed();
-        println!("Elapsed: {:.2?}", elapsed);
+        println!("search done in: {:.2?}", elapsed);
 
         return Some(merge_all_paths(
             start,
@@ -1016,3 +1015,8 @@ pub fn benchmark_random_bfs<G>(
 // how should i handle the case where on a page (say banana) there are two links: one is a redirect to apple (fruit apple) and the other is a direct link to apple (apple fruit)
 // do i consider banana -> fruit apple and banana -> apple fruit the same path or keep both
 // i will keep only 1 for now
+
+// Takizawa_Bakin -> Phase-out_of_lightweight_plastic_bags
+// Lunitidal_interval -> Length_(phonetics)"
+
+// find sources and sinks and paths between them
