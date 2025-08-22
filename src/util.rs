@@ -12,21 +12,30 @@ use std::{
 
 pub fn unescape_sql_string(s: &str) -> String {
     let mut result = String::with_capacity(s.len());
-    let mut chars = s.chars();
+    let mut chars = s.chars().peekable();
+
     while let Some(c) = chars.next() {
         if c == '\\' {
-            if let Some(next) = chars.next() {
-                match next {
-                    '\\' => result.push('\\'),
-                    '\'' => result.push('\''),
-                    'n' => result.push('\n'),
-                    'r' => result.push('\r'),
-                    't' => result.push('\t'),
-                    _ => {
-                        // Unknown escape, keep both
-                        result.push('\\');
-                        result.push(next);
-                    }
+            if let Some(&next) = chars.peek() {
+                let unescaped = match next {
+                    '\\' => Some('\\'),
+                    '\'' => Some('\''),
+                    '"' => Some('"'),
+                    'n' => Some('\n'),
+                    'r' => Some('\r'),
+                    't' => Some('\t'),
+                    '0' => Some('\0'),
+                    'b' => Some('\x08'),
+                    'Z' => Some('\x1A'),
+                    _ => None, // unknown, keep literal
+                };
+
+                if let Some(ch) = unescaped {
+                    result.push(ch);
+                    chars.next(); // consume the escaped char
+                } else {
+                    result.push('\\');
+                    result.push(chars.next().unwrap());
                 }
             } else {
                 result.push('\\');
@@ -35,6 +44,7 @@ pub fn unescape_sql_string(s: &str) -> String {
             result.push(c);
         }
     }
+
     result
 }
 

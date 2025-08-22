@@ -47,13 +47,16 @@ pub fn build_title_maps_dense(
         if line.starts_with(PREFIX) {
             for cap in tuple_re.captures_iter(&line) {
                 let page_id: u32 = cap[1].parse()?;
-                if page_id == 53251 {
-                    println!("found 53251");
+                if page_id == 13834 {
+                    println!("found 13834 hello world program");
                 }
                 let raw_title = &cap[2];
 
                 // Handle escaped stuff
                 let unescaped_title = util::unescape_sql_string(&raw_title);
+                if page_id == 13834 {
+                    println!("{}", unescaped_title);
+                }
 
                 title_to_orig_id.insert(unescaped_title.clone(), page_id);
                 orig_id_to_title.insert(page_id, unescaped_title);

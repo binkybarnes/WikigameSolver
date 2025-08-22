@@ -24,7 +24,7 @@ clap = { version = "4.5.45", features = ["derive"] }
 axum = { version = "0.8.4", features = ["macros"] }
 serde_json = "1.0.142"
 tokio = { version = "1.47.1", features = ["rt-multi-thread", "macros"] }
-tower-http = { version = "0.6.6", features = ["cors", "compression-br"] }
+tower-http = { version = "0.6.6", features = ["cors", "compression-full"] }
 tower_governor = "0.8.0"
 tracing = "0.1.41"
 tracing-subscriber = "0.3.19"

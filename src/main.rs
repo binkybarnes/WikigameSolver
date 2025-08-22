@@ -36,6 +36,8 @@ use clap::Parser;
 //   or reordering with community detection (louvain, Label Propagation, Girvan–Newman, Infomap, etc)
 //   or graph partitioning (for parallel processing or community detection?) (METIS, KaHIP)
 
+// maybe make title to id titles lowercase
+
 #[derive(Parser)]
 #[command(name = "wikirace")]
 #[command(about = "Find shortest paths between Wikipedia pages", long_about = None)]
@@ -135,7 +137,7 @@ pub async fn search_handler(
             Some(id) => id,
             None => {
                 return json_error(
-                    json!({"error": format!("Start title '{}' not found", title)}),
+                    json!({"error": format!("Start title '{}' not found. Check capitalization", title)}),
                     404,
                 )
             }
@@ -163,7 +165,7 @@ pub async fn search_handler(
             Some(id) => id,
             None => {
                 return json_error(
-                    json!({"error": format!("End title '{}' not found", title)}),
+                    json!({"error": format!("End title '{}' not found. Check capitalization", title)}),
                     404,
                 )
             }
@@ -195,23 +197,25 @@ pub async fn search_handler(
         redirect => redirect,
     };
 
-    let mut hasher = FxHasher::default();
-    start_id.hash(&mut hasher);
-    goal_id.hash(&mut hasher);
-    let etag = format!("{:x}", hasher.finish());
-    println!("ETag: {}", etag);
+    // let mut hasher = FxHasher::default();
+    // start_id.hash(&mut hasher);
+    // goal_id.hash(&mut hasher);
+    // let etag = format!("{:x}", hasher.finish());
+    // let etag = format!("\"{}-{}-{}\"", start_id, goal_id, req.output_as_ids);
 
-    if let Some(if_none_match) = headers.get(IF_NONE_MATCH) {
-        if if_none_match.to_str().ok() == Some(&etag) {
-            println!("Response time: {:.2?}\n", start_req.elapsed());
-            return Response::builder()
-                .status(304)
-                .header(ETAG, &etag)
-                .header(CACHE_CONTROL, "public, max-age=31536000, immutable")
-                .body(Body::empty())
-                .unwrap();
-        }
-    }
+    // println!("ETag: {}", etag);
+
+    // if let Some(if_none_match) = headers.get(IF_NONE_MATCH) {
+    //     if if_none_match.to_str().ok() == Some(&etag) {
+    //         println!("Response time: {:.2?}\n", start_req.elapsed());
+    //         return Response::builder()
+    //             .status(304)
+    //             .header(ETAG, &etag)
+    //             .header(CACHE_CONTROL, "public, max-age=31536000, immutable")
+    //             .body(Body::empty())
+    //             .unwrap();
+    //     }
+    // }
 
     // --- Run BFS ---
     let start_bfs = Instant::now();
@@ -259,7 +263,7 @@ pub async fn search_handler(
     // Build response with headers
     Response::builder()
         .header("Content-Type", "application/json")
-        .header("ETag", etag)
+        // .header("ETag", etag)
         .header("Cache-Control", "public, max-age=31536000, immutable") // ~1 year
         .body(Body::from(body))
         .unwrap()
@@ -356,8 +360,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/search", post(search_handler))
         .with_state(state)
         .layer(CompressionLayer::new())
-        .layer(cors)
-        .layer(GovernorLayer::new(governor_conf));
+        .layer(GovernorLayer::new(governor_conf))
+        .layer(cors);
 
     let addr = format!("0.0.0.0:{}", args.port);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
