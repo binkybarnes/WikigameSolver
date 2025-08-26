@@ -1,0 +1,38 @@
+2025-08-26T01:17:35.998623Z ERROR rusting: this is a test error
+2025-08-26T01:20:29.767216Z ERROR rusting: this is a test error
+2025-08-26T01:46:58.434556Z ERROR rusting: this is a test error
+2025-08-26T02:25:49.647240Z ERROR rusting: this is a test error
+2025-08-26T17:41:25.506406Z ERROR rusting: this is a test error
+2025-08-26T17:45:53.411173Z ERROR rusting: this is a test error
+2025-08-26T17:46:22.672136Z ERROR rusting: this is a test error
+2025-08-26T17:54:55.112624Z ERROR rusting: this is a test error
+2025-08-26T17:56:09.172652Z ERROR rusting: this is a test error
+2025-08-26T19:04:46.610001Z ERROR rusting: this is a test error
+2025-08-26T19:22:45.398359Z ERROR rusting: insert search failed: Database(SqliteError { code: 787, message: "FOREIGN KEY constraint failed" })
+2025-08-26T19:22:52.371633Z ERROR rusting: insert search failed: Database(SqliteError { code: 787, message: "FOREIGN KEY constraint failed" })
+2025-08-26T19:24:00.281213Z ERROR rusting: insert search failed: Database(SqliteError { code: 787, message: "FOREIGN KEY constraint failed" })
+2025-08-26T19:24:23.938527Z ERROR rusting: insert search failed: Database(SqliteError { code: 787, message: "FOREIGN KEY constraint failed" })
+2025-08-26T19:24:35.237517Z ERROR rusting: insert search failed: Database(SqliteError { code: 787, message: "FOREIGN KEY constraint failed" })
+2025-08-26T19:24:37.341030Z ERROR rusting: insert search failed: Database(SqliteError { code: 787, message: "FOREIGN KEY constraint failed" })
+2025-08-26T19:24:43.065229Z ERROR rusting: insert search failed: Database(SqliteError { code: 787, message: "FOREIGN KEY constraint failed" })
+2025-08-26T19:24:46.470463Z ERROR rusting: insert search failed: Database(SqliteError { code: 787, message: "FOREIGN KEY constraint failed" })
+2025-08-26T19:24:50.992813Z ERROR rusting: insert search failed: Database(SqliteError { code: 787, message: "FOREIGN KEY constraint failed" })
+2025-08-26T19:30:09.424355Z ERROR rusting: insert search failed: Database(SqliteError { code: 787, message: "FOREIGN KEY constraint failed" })
+2025-08-26T19:30:12.360260Z ERROR rusting: insert search failed: Database(SqliteError { code: 787, message: "FOREIGN KEY constraint failed" })
+2025-08-26T19:38:53.280330Z ERROR rusting: this is a test error
+2025-08-26T20:18:33.528347Z ERROR rusting: insert search failed: Database(SqliteError { code: 787, message: "FOREIGN KEY constraint failed" })
+2025-08-26T21:47:21.937775Z ERROR rusting: this is a test error
+2025-08-26T22:44:03.784565Z ERROR rusting: bad request, reason=Start title not found: fd
+2025-08-26T22:45:06.809774Z ERROR rusting: bad request, reason=Start title not found: fd
+2025-08-26T22:45:08.393070Z ERROR rusting: bad request, reason=Start title not found: fd
+2025-08-26T22:54:49.310895Z ERROR rusting: this is a test error
+2025-08-26T22:55:57.834786Z ERROR rusting: bad request, reason=Start title not found: fd
+2025-08-26T22:55:58.350933Z ERROR rusting: bad request, reason=Start title not found: fd
+2025-08-26T22:55:58.746886Z ERROR rusting: bad request, reason=Start title not found: fd
+2025-08-26T22:55:59.216092Z ERROR rusting: bad request, reason=Start title not found: fd
+2025-08-26T22:56:02.075586Z ERROR rusting: bad request, reason=Start title not found: fd
+2025-08-26T22:56:02.496365Z ERROR rusting: bad request, reason=Start title not found: fd
+2025-08-26T22:56:03.031614Z ERROR rusting: bad request, reason=Start title not found: fd
+2025-08-26T22:56:03.476035Z ERROR rusting: bad request, reason=Start title not found: fd
+2025-08-26T22:56:03.894463Z ERROR rusting: bad request, reason=Start title not found: fd
+2025-08-26T22:56:04.377771Z ERROR rusting: bad request, reason=Start title not found: fd

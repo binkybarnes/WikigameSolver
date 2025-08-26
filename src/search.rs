@@ -504,7 +504,7 @@ pub fn bi_bfs_csr<G>(
     goal: u32,
     max_depth: u8,
     redirects_passed: &RedirectsPassedMmap,
-    // redirects_passed: &FxHashMap<(u32, u32), u32>,
+    node_count: &mut u32, // redirects_passed: &FxHashMap<(u32, u32), u32>,
 ) -> Option<Vec<Vec<u32>>>
 where
     G: CsrGraphTrait,
@@ -582,6 +582,7 @@ where
         let level_size = queue.len();
         for _ in 0..level_size {
             let (node, current_depth) = queue.pop_front().unwrap();
+            *node_count += 1;
             let next_depth = current_depth + 1;
             let next_combined_depth = combined_depth + 1;
 
@@ -913,7 +914,15 @@ pub fn bfs_interactive_session<G>(
 
         println!("\nRunning bidirectional BFS on CSR graph...");
         let now = Instant::now();
-        let paths_adj_fwd = bi_bfs_csr(csr_graph, start_id, goal_id, max_depth, redirects_passed);
+        let mut node_count = 0;
+        let paths_adj_fwd = bi_bfs_csr(
+            csr_graph,
+            start_id,
+            goal_id,
+            max_depth,
+            redirects_passed,
+            &mut node_count,
+        );
         let elapsed_fwd = now.elapsed();
 
         match &paths_adj_fwd {
@@ -974,7 +983,15 @@ pub fn benchmark_random_bfs<G>(
         println!("\nRunning BFS: {} -> {}", start_id, goal_dense);
 
         let start_time = Instant::now();
-        let paths = bi_bfs_csr::<G>(graph, start_id, goal_id, max_depth, redirects_passed_mmap);
+        let mut node_count = 0;
+        let paths = bi_bfs_csr::<G>(
+            graph,
+            start_id,
+            goal_id,
+            max_depth,
+            redirects_passed_mmap,
+            &mut node_count,
+        );
         let elapsed = start_time.elapsed();
         times.push(elapsed.as_secs_f64());
 
