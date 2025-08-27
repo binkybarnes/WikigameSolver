@@ -1,9 +1,18 @@
+// Declare all your new modules
+mod auth;
+mod config;
+mod leaderboard;
+mod models;
+mod state;
+mod util;
+
+// Your other existing modules
 mod builders;
 mod graph;
 mod mmap_structs;
 mod parsers;
-mod search;
-mod util;
+mod routes;
+mod search; // This is important!
 
 use core::num;
 use std::env;

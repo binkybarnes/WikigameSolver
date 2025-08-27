@@ -133,6 +133,17 @@ pub fn mmap_as_u32_slice(mmap: &Mmap) -> &'_ [u32] {
     bytemuck::cast_slice::<u8, u32>(&mmap[..])
 }
 
+use axum::http::StatusCode;
+use axum::response::Response;
+pub fn json_response(body: serde_json::Value, status: StatusCode) -> Response {
+    let body_bytes = serde_json::to_vec(&body).unwrap();
+    Response::builder()
+        .status(status)
+        .header("Content-Type", "application/json")
+        .body(axum::body::Body::from(body_bytes))
+        .unwrap()
+}
+
 // pub fn save_to_file<T: Serialize>(data: &T, path: &str) -> anyhow::Result<()> {
 //     println!("Serializing and saving to file");
 //     let file = File::create(path)?;
