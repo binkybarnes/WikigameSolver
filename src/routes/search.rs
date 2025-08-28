@@ -19,10 +19,15 @@ use uuid::Uuid;
 pub async fn search_handler(
     State(state): State<Arc<AppState>>,
     // headers: HeaderMap,
-    Extension(user_id): Extension<String>,
+    // Extension(user_id): Extension<String>,
+    maybe_user: Option<Extension<String>>,
     Json(req): Json<PathRequest>,
 ) -> impl IntoResponse {
     let start_req = Instant::now();
+
+    let user_id: String = maybe_user
+        .map(|Extension(s)| s)
+        .unwrap_or_else(|| "NO_USER".to_string());
 
     // --- Resolve start ---
     let start_id = match (&req.start, &req.start_id) {
@@ -193,6 +198,7 @@ pub async fn search_handler(
         goal_id_orig,
         path_length,
         &search_id,
+        &user_id,
         state.env.leaderboard_limit,
     )
     .await;
@@ -204,6 +210,7 @@ pub async fn search_handler(
         goal_id_orig,
         num_paths,
         &search_id,
+        &user_id,
         state.env.leaderboard_limit,
     )
     .await;

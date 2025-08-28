@@ -1,7 +1,7 @@
 // src/routes/mod.rs
 
-use crate::auth::jwt_middleware;
 use crate::state::AppState;
+use crate::{auth::jwt_middleware, routes::leaderboard::get_leaderboard};
 use axum::{
     middleware,
     routing::{get, post},
@@ -14,6 +14,7 @@ use tower_http::cors::CorsLayer;
 
 // Import your handlers
 mod auth;
+mod leaderboard;
 mod search;
 mod user;
 
@@ -28,6 +29,7 @@ pub fn create_router(state: Arc<AppState>, cors: CorsLayer) -> Router {
         .route("/auth/google", post(google_auth_login_handler))
         .route("/auth/logout", post(logout_handler))
         .route("/user/change-username", post(change_username_handler))
+        .route("/leaderboard/{leaderboard_type}", get(get_leaderboard))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             jwt_middleware,
@@ -35,6 +37,6 @@ pub fn create_router(state: Arc<AppState>, cors: CorsLayer) -> Router {
         .with_state(state)
         .layer(CookieManagerLayer::new())
         .layer(CompressionLayer::new())
-        // .layer(GovernorLayer::new(governor_conf)) // You can pass governor_conf in if needed
+        // .layer(GovernorLayer::new(governor_conf)) // applied in main
         .layer(cors)
 }

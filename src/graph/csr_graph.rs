@@ -30,7 +30,7 @@ impl CsrGraphTrait for CsrGraph {
         &self.reverse_edges[start..end]
     }
     fn num_nodes(&self) -> usize {
-        self.offsets.len()
+        self.offsets.len() - 1
     }
 }
 
