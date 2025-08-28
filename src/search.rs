@@ -620,7 +620,7 @@ where
             &parents_fwd,
             &parents_bwd,
             redirects_passed,
-            false,
+            true,
         ));
     }
 
