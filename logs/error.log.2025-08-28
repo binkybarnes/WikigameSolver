@@ -11,3 +11,9 @@
 2025-08-28T00:33:00.201861Z ERROR rusting::routes::search: insert search failed: Database(SqliteError { code: 787, message: "FOREIGN KEY constraint failed" })
 2025-08-28T00:33:07.370181Z ERROR rusting::routes::search: insert search failed: Database(SqliteError { code: 787, message: "FOREIGN KEY constraint failed" })
 2025-08-28T00:50:01.959742Z ERROR rusting: this is a test error
+2025-08-28T18:43:06.014820Z ERROR rusting: this is a test error
+2025-08-28T18:45:16.156115Z ERROR rusting: this is a test error
+2025-08-28T18:50:41.009020Z ERROR rusting: this is a test error
+2025-08-28T18:52:43.226111Z ERROR rusting: this is a test error
+2025-08-28T18:53:20.923436Z ERROR rusting: this is a test error
+2025-08-28T19:40:08.229386Z ERROR rusting: this is a test error

@@ -215,7 +215,7 @@ pub async fn search_handler(
     )
     .await;
 
-    println!("db stuff took {:?}", sql_time.elapsed());
+    tracing::debug!("db stuff took {:?}", sql_time.elapsed());
     let response = PathResponse {
         elapsed_s,
         paths,
@@ -226,9 +226,9 @@ pub async fn search_handler(
     // Optional: log size
     let body = serde_json::to_vec(&response).unwrap();
 
-    println!("Response size: {} bytes", body.len());
+    tracing::debug!("Response size: {} bytes", body.len());
 
-    println!("Response time: {:.2?}\n", start_req.elapsed());
+    tracing::debug!("Response time: {:.2?}\n", start_req.elapsed());
 
     // Build response with headers
     Response::builder()

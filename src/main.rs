@@ -66,6 +66,7 @@ use std::sync::Arc;
 use tower_governor::governor::GovernorConfigBuilder;
 use tower_http::cors::CorsLayer;
 use tracing::level_filters::LevelFilter;
+use tracing_subscriber::EnvFilter;
 
 use tracing_appender::non_blocking;
 use tracing_appender::rolling;
@@ -80,16 +81,19 @@ fn init_tracing() -> tracing_appender::non_blocking::WorkerGuard {
     let file_appender = rolling::daily("logs", "error.log");
     let (file_writer, file_guard) = non_blocking(file_appender);
 
+    // Use EnvFilter so RUST_LOG is respected
+    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+
     // Layer that writes only ERROR+ to file
     let file_layer = fmt::layer()
         .with_writer(file_writer)
         .with_ansi(false)
-        .with_filter(LevelFilter::ERROR);
+        .with_filter(EnvFilter::new("error"));
 
     // Layer that writes INFO+ to stdout
     let stdout_layer = fmt::layer()
         .with_writer(std::io::stdout)
-        .with_filter(LevelFilter::INFO);
+        .with_filter(env_filter);
 
     tracing_subscriber::registry()
         .with(file_layer)
@@ -264,7 +268,7 @@ async fn main() -> anyhow::Result<()> {
         .unwrap();
 
     let governor_limiter = governor_conf.limiter().clone();
-    let interval = Duration::from_secs(60);
+    let interval = Duration::from_secs(3 * 60);
 
     std::thread::spawn(move || loop {
         std::thread::sleep(interval);

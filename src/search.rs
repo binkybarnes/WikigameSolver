@@ -71,7 +71,7 @@ fn process_neighbor_bi(
     if visited_depth_other.contains_key(&neighbor) {
         if meet_found_at_depth.is_none() {
             *meet_found_at_depth = Some(next_combined_depth);
-            println!("path found at depth {}", next_combined_depth);
+            tracing::debug!("path found at depth {}", next_combined_depth);
         }
         // this check prevents duplicates in meet_nodes
         if !meet_nodes.contains(&neighbor) {
@@ -547,7 +547,7 @@ where
         }
         // Check max depth
         if combined_depth >= max_depth {
-            println!("MAX DEPTH REACHED");
+            tracing::info!("MAX DEPTH REACHED");
             return None;
         }
 
@@ -573,7 +573,7 @@ where
             };
 
         *depth += 1;
-        println!(
+        tracing::debug!(
             "Depth {} {}",
             if backwards { "backwards" } else { "forwards" },
             depth
@@ -611,7 +611,7 @@ where
 
     if meet_found_at_depth.is_some() {
         let elapsed = now.elapsed();
-        println!("search done in: {:.2?}", elapsed);
+        tracing::debug!("search done in: {:.2?}", elapsed);
 
         return Some(merge_all_paths(
             start,
