@@ -10,6 +10,7 @@ pub struct EnvironmentVariables {
     pub database_url: String,
     pub leaderboard_limit: u32,
     pub google_client_id: String,
+    pub is_production: bool,
 }
 
 impl EnvironmentVariables {
@@ -36,11 +37,17 @@ impl EnvironmentVariables {
             Err(_) => bail!("Missing GOOGLE_CLIENT_ID"),
         };
 
+        let is_production = match env::var("IS_PRODUCTION") {
+            Ok(val) => val == "1" || val.to_lowercase() == "true",
+            Err(_) => false,
+        };
+
         Ok(Self {
             jwt_secret,
             database_url,
             leaderboard_limit,
             google_client_id,
+            is_production,
         })
     }
 }

@@ -83,7 +83,7 @@ pub async fn me_handler(State(state): State<Arc<AppState>>, cookies: Cookies) ->
         Cookie::build(("jwt", token))
             .path("/")
             .http_only(true)
-            .secure(false) // secure in prod
+            .secure(state.env.is_production) // secure in prod
             .same_site(tower_cookies::cookie::SameSite::Lax)
             .into(),
     );
@@ -308,7 +308,7 @@ pub async fn google_auth_login_handler(
     cookies.add(
         Cookie::build(("jwt", token))
             .path("/")
-            .secure(false) // ⚠️ should be true in production (HTTPS)
+            .secure(state.env.is_production) // ⚠️ should be true in production (HTTPS)
             .http_only(true)
             .max_age(tower_cookies::cookie::time::Duration::days(36500))
             .into(),
@@ -317,13 +317,16 @@ pub async fn google_auth_login_handler(
     json_response(json!({ "user_id": final_user_id}), StatusCode::OK)
 }
 
-pub async fn logout_handler(cookies: Cookies) -> impl IntoResponse {
+pub async fn logout_handler(
+    State(state): State<Arc<AppState>>,
+    cookies: Cookies,
+) -> impl IntoResponse {
     // Clear the JWT cookie
     cookies.add(
         Cookie::build(("jwt", ""))
             .path("/")
             .http_only(true)
-            .secure(false) // ⚠️ set true in production
+            .secure(state.env.is_production) // ⚠️ set true in production
             .max_age(tower_cookies::cookie::time::Duration::seconds(0)) // expire immediately
             .into(),
     );
