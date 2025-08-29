@@ -29,7 +29,7 @@ RUST_LOG=debug,tracing_sqlx=warn cargo run --release
 - **Graph Construction:**
 
   - From the SQL dump files, constructs a graph of the pagelinks in **CSR** form.
-  - Memory-mapped for efficiency.
+  - Memory-mapped to save memory, otherwise it would take like 10gb of ram
 
 - **Searching:**
 
