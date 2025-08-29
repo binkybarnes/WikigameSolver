@@ -168,3 +168,25 @@ pub async fn populate_leaderboard(
 
     Ok(())
 }
+
+pub async fn update_username_in_redis(
+    redis_pool: &deadpool_redis::Pool,
+    old_username: &str,
+    new_username: &str,
+) -> anyhow::Result<()> {
+    let mut conn = redis_pool.get().await?;
+
+    // Fetch all fields and values from leaderboard:username
+    let entries: Vec<(String, String)> = conn.hgetall("leaderboard:username").await?;
+
+    for (field, value) in entries {
+        if value == old_username {
+            // Update the field with the new username
+            let _: () = conn
+                .hset("leaderboard:username", field, new_username)
+                .await?;
+        }
+    }
+
+    Ok(())
+}

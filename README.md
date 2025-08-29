@@ -26,6 +26,8 @@ wikigame/
 
 ## TODO
 
+RUST_LOG=debug,tracing_sqlx=warn cargo run --release
+
 ## 🧩 How It Works
 
 - **Graph Construction:**  

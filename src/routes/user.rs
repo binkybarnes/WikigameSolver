@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::leaderboard::update_username_in_redis;
 // src/routes/user.rs
 use crate::models::ChangeUsernameRequest;
 use crate::state::AppState;
@@ -52,6 +53,11 @@ pub async fn change_username_handler(
         _ => {}
     }
 
+    let old_username: String =
+        sqlx::query_scalar!("SELECT username FROM users WHERE id = ?", user_id)
+            .fetch_one(&state.sqlite_pool)
+            .await
+            .unwrap();
     // Update the username in the database
     let result = sqlx::query!(
         "UPDATE users SET username = ? WHERE id = ?",
@@ -62,10 +68,19 @@ pub async fn change_username_handler(
     .await;
 
     match result {
-        Ok(_) => json_response(
-            serde_json::json!({ "success": true, "username": new_username }),
-            StatusCode::OK,
-        ),
+        Ok(_) => {
+            // Update Redis leaderboard
+            if let Err(err) =
+                update_username_in_redis(&state.redis_pool, &old_username, &new_username).await
+            {
+                eprintln!("Failed to update Redis leaderboard: {:?}", err);
+            }
+
+            json_response(
+                serde_json::json!({ "success": true, "username": new_username }),
+                StatusCode::OK,
+            )
+        }
         Err(err) => {
             eprintln!("Failed to update username: {:?}", err);
             json_response(

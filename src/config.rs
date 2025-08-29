@@ -10,6 +10,9 @@ pub struct EnvironmentVariables {
     pub database_url: String,
     pub leaderboard_limit: u32,
     pub google_client_id: String,
+    pub api_analytics_key: String,
+    pub frontend_origin: String,
+    pub port: u16,
     pub is_production: bool,
 }
 
@@ -37,6 +40,19 @@ impl EnvironmentVariables {
             Err(_) => bail!("Missing GOOGLE_CLIENT_ID"),
         };
 
+        let api_analytics_key = match env::var("API_ANALYTICS_API_KEY") {
+            Ok(val) => val,
+            Err(_) => bail!("Missing API_ANALYTICS_API_KEY"),
+        };
+
+        let frontend_origin =
+            env::var("FRONTEND_ORIGIN").unwrap_or_else(|_| "http://localhost:5173".to_string());
+
+        let port = env::var("PORT")
+            .ok()
+            .and_then(|s| s.parse::<u16>().ok())
+            .unwrap_or(3000);
+
         let is_production = match env::var("IS_PRODUCTION") {
             Ok(val) => val == "1" || val.to_lowercase() == "true",
             Err(_) => false,
@@ -47,6 +63,9 @@ impl EnvironmentVariables {
             database_url,
             leaderboard_limit,
             google_client_id,
+            api_analytics_key,
+            frontend_origin,
+            port,
             is_production,
         })
     }

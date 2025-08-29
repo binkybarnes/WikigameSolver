@@ -24,6 +24,12 @@ pub struct LeaderboardEntry {
     rank: usize,
 }
 
+#[derive(Serialize)]
+pub struct LeaderboardResponse {
+    entries: Vec<LeaderboardEntry>,
+    total: usize,
+}
+
 #[derive(Deserialize)]
 pub struct LeaderboardQuery {
     offset: Option<usize>, // default 0
@@ -45,6 +51,9 @@ pub async fn get_leaderboard(
 
     let mut conn = state.redis_pool.get().await.unwrap();
 
+    // 1️⃣ Get total number of entries in the leaderboard
+    let total: usize = conn.zcard(&leaderboard_key).await.unwrap_or(0) as usize;
+
     // 1️⃣ Get top 500 entries from the sorted set
     let entries: Vec<(String, u32)> = conn
         .zrevrange_withscores(&leaderboard_key, offset as isize, stop as isize)
@@ -61,7 +70,7 @@ pub async fn get_leaderboard(
     let usernames: Vec<Option<String>> = conn.hmget(&username_hash_key, &hash_keys).await.unwrap();
 
     // 4️⃣ Build leaderboard entries
-    let result: Vec<LeaderboardEntry> = entries
+    let leaderboard_entries: Vec<LeaderboardEntry> = entries
         .into_iter()
         .zip(usernames.into_iter())
         .enumerate()
@@ -80,8 +89,14 @@ pub async fn get_leaderboard(
         })
         .collect();
 
+    // --- Prepare response ---
+    let response_body = LeaderboardResponse {
+        entries: leaderboard_entries,
+        total,
+    };
+
     // --- Caching Logic ---
-    let body_bytes = serde_json::to_vec(&result).unwrap();
+    let body_bytes = serde_json::to_vec(&response_body).unwrap();
 
     // 1. Generate ETag from the response body
     let mut hasher = FxHasher::default();
@@ -101,7 +116,7 @@ pub async fn get_leaderboard(
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "application/json")
         .header(header::ETAG, etag)
-        .header(header::CACHE_CONTROL, "public, max-age=600") // Cache for 10 minutes
+        .header(header::CACHE_CONTROL, "public, no-cache") // max-age=600 Cache for 10 minutes. actually no cache cause username might change. rely on etag 304 to cache
         .body(Body::from(body_bytes))
         .unwrap()
 }

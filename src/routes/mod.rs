@@ -7,6 +7,7 @@ use axum::{
     routing::{get, post},
     Router,
 };
+use axum_analytics::Analytics;
 use std::sync::Arc;
 use tower_cookies::CookieManagerLayer;
 use tower_http::compression::CompressionLayer;
@@ -34,7 +35,8 @@ pub fn create_router(state: Arc<AppState>, cors: CorsLayer) -> Router {
             state.clone(),
             jwt_middleware,
         ))
-        .with_state(state)
+        .with_state(state.clone())
+        .layer(Analytics::new(state.env.api_analytics_key.clone()))
         .layer(CookieManagerLayer::new())
         .layer(CompressionLayer::new())
         // .layer(GovernorLayer::new(governor_conf)) // applied in main

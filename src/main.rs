@@ -62,6 +62,8 @@ struct Args {
 use axum::http::Method;
 use reqwest::header::ACCEPT;
 use reqwest::header::CONTENT_TYPE;
+use reqwest::header::ETAG;
+use reqwest::header::IF_NONE_MATCH;
 use std::sync::Arc;
 use tower_governor::governor::GovernorConfigBuilder;
 use tower_http::cors::CorsLayer;
@@ -225,7 +227,7 @@ async fn main() -> anyhow::Result<()> {
         csr_graph: Arc::new(load_csr_graph_mmap()?),
         redis_pool: redis_pool,
         sqlite_pool: sqlite_pool,
-        env: env,
+        env: env.clone(),
     };
 
     let state = Arc::new(state); // one shared instance
@@ -249,13 +251,14 @@ async fn main() -> anyhow::Result<()> {
     let cors = CorsLayer::new()
         // .allow_origin(Any) // allow all origins (for dev)
         .allow_origin(
-            "http://localhost:5173"
+            env.frontend_origin
                 .parse::<axum::http::HeaderValue>()
                 .unwrap(),
         )
         .allow_methods(Method::GET)
-        .allow_headers(vec![CONTENT_TYPE, ACCEPT])
-        .allow_credentials(true);
+        .allow_headers(vec![CONTENT_TYPE, ACCEPT, IF_NONE_MATCH])
+        .allow_credentials(true)
+        .expose_headers([ETAG]);
 
     // rate limiting
     // let subscriber = tracing_subscriber::FmtSubscriber::new();
@@ -297,7 +300,8 @@ async fn main() -> anyhow::Result<()> {
     //     // .layer(GovernorLayer::new(governor_conf))
     //     .layer(cors);
 
-    let addr = format!("0.0.0.0:{}", args.port);
+    // let addr = format!("0.0.0.0:{}", args.port);
+    let addr = format!("0.0.0.0:{}", env.port);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     // axum::serve(listener, app.into_make_service()).await?;
     axum::serve(

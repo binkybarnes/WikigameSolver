@@ -39,3 +39,4 @@ sqlx = { version = "0.8.6", features = ['sqlite', 'runtime-tokio'] }
 tracing-appender = "0.2.3"
 reqwest = { version = "0.12", features = ["json"] }
 rustrict = "0.7.36"
+axum-analytics = "1.3.0"
