@@ -74,6 +74,40 @@ The preprocessed Wikipedia graph data uses **dense IDs** (compact integers for p
 
 You can find the Rust structs for these memory-mapped files in `src/mmap_structs.rs`.
 
+> ⚠️ Note: After building the memory-mapped files, you can safely delete the original SQL dumps and intermediate `.bin` files.  
+> The first time you run the webserver, memory-mapped files may load slower as the OS brings them into RAM, but subsequent runs using the same paths are much faster.
+
+> 💾 Memory-Mapped File Sizes:
+> 📁 csr/  
+> ├── mmap.bin 70M
+> ├── edges.bin 2.6G
+> ├── reverse_edges.bin 2.6G
+
+> 📁 dense_id_to_orig/  
+> ├── dense_ids.bin 70M
+> ├── orig_ids.bin 70M
+> ├── offsets.bin 70M
+
+> 📁 redirect_targets_dense/  
+> ├── redirect_targets_dense.bin 70M
+
+> 📁 dense_id_to_title/  
+> ├── dense_ids.bin 70M
+> ├── offsets.bin 70M
+> ├── titles.bin 370M
+
+> 📁 title_to_dense_id/  
+> ├── dense_ids.bin 70M
+> ├── offsets.bin 70M
+> ├── titles.bin 370M
+
+> 📁 redirects_passed/  
+> ├── offsets.bin 70M
+> ├── redirect_targets.bin 244M
+> ├── redirects.bin 244M
+
+> **Total size:** 7.0G
+
 ## 5. Using the Webserver
 
 Once the data is prepared, start the webserver normally:
