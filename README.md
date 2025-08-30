@@ -1,7 +1,6 @@
 # 🕹️ Wikipedia Path Solver: Find shortest paths between 2 wiki pages
 
 It's pretty fast in finding the shortest paths between Wikipedia articles.
-Inspired by Six Degrees of Wikipedia [https://github.com/jwngr/sdow](https://github.com/jwngr/sdow)
 
 **Try it out!**
 
@@ -10,6 +9,18 @@ Inspired by Six Degrees of Wikipedia [https://github.com/jwngr/sdow](https://git
 This repo serves the backend api of this website Github: [https://github.com/binkybarnes/WikigameSolverWeb](https://github.com/binkybarnes/WikigameSolverWeb)
 
 ---
+
+## Alternatives
+
+I recently found several similar projects, here are some I found. (if you find other good ones make a request)
+
+- [Six Degrees of Wikipedia wngr/sdow](https://github.com/jwngr/sdow) — Probably the most popular inspiration for projects like this.
+- [WikiPath ldobbelsteen/wikipath](https://github.com/ldobbelsteen/wikipath) — This one is fast, but for some paths it fails (e.g., Melvin T. Mason -> Goodenia iyouta). Probably has a safeguard that stops when visting too many nodes.
+- [wikipath](https://github.com/wgoodall01/wikipath) — Also seems fast cause they loaded graph into memory, only local web ui however.
+- [WikiGameSolver](https://github.com/spaceface777/WikiGameSolver) — Website doesn't seem to be working currently, but notable memory-loaded approach.
+- [wikipath (Python & Rust)](https://github.com/cosmobobak/wikipath) — This one is interesting they use nlp stuff instead of graph.
+
+This project is probably comparable to [WikiPath ldobbelsteen/wikipath](https://github.com/ldobbelsteen/wikipath) but they have other languages as well.
 
 ## 🛠️ Quick Start
 
