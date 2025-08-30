@@ -14,7 +14,7 @@ This repo serves the backend api of this website Github: [https://github.com/bin
 
 I recently found several similar projects, here are some I found. (if you find other good ones make a request)
 
-- [Six Degrees of Wikipedia wngr/sdow](https://github.com/jwngr/sdow) — Probably the most popular inspiration for projects like this.
+- [Six Degrees of Wikipedia](https://github.com/jwngr/sdow) — Probably the most popular inspiration for projects like this.
 - [WikiPath ldobbelsteen/wikipath](https://github.com/ldobbelsteen/wikipath) — This one is fast, but for some paths it fails (e.g., Melvin T. Mason -> Goodenia iyouta). Probably has a safeguard that stops when visting too many nodes.
 - [wikipath](https://github.com/wgoodall01/wikipath) — Also seems fast cause they loaded graph into memory, only local web ui however.
 - [WikiGameSolver](https://github.com/spaceface777/WikiGameSolver) — Website doesn't seem to be working currently, but notable memory-loaded approach.

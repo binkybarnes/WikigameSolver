@@ -175,6 +175,7 @@ pub async fn google_auth_login_handler(
     .fetch_optional(&mut *tx)
     .await;
 
+    // TODO!!!! DO THE REDIS LEADERBOARD USERNAME CHANGE ON THESE CASES
     if current_provider == "guest" {
         // --- The normal/expected flow: requester is a guest -> either merge into existing google or upgrade guest to google
         let guest_user_id = &user_id;
