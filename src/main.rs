@@ -66,6 +66,7 @@ use reqwest::header::ETAG;
 use reqwest::header::IF_NONE_MATCH;
 use std::sync::Arc;
 use tower_governor::governor::GovernorConfigBuilder;
+use tower_governor::GovernorLayer;
 use tower_http::cors::CorsLayer;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::EnvFilter;
@@ -280,9 +281,10 @@ async fn main() -> anyhow::Result<()> {
     });
 
     // 6. Create Router from our routes module
-    let app = create_router(state, cors)
-    // .layer(GovernorLayer::new(governor_conf))
-    ;
+    let mut app = create_router(state, cors);
+    if env.is_production {
+        app = app.layer(GovernorLayer::new(governor_conf));
+    }
 
     // let app = Router::new()
     //     .route("/search", post(search_handler))

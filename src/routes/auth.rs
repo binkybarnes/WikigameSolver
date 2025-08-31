@@ -1,14 +1,17 @@
 use std::sync::Arc;
 
 // src/routes/auth.rs
-use crate::auth::{
-    create_jwt,
-    google::{verify_google_token, AuthRequest},
-    Claims,
-};
 use crate::models::{create_guest_account, Provider, UserInfo};
 use crate::state::AppState;
 use crate::util::json_response;
+use crate::{
+    auth::{
+        create_jwt,
+        google::{verify_google_token, AuthRequest},
+        Claims,
+    },
+    leaderboard::update_username_in_redis,
+};
 use axum::{
     body::Body,
     extract::State,
@@ -148,23 +151,27 @@ pub async fn google_auth_login_handler(
     };
 
     // 4) fetch current (requesting) user row to see provider
-    let current_user_row =
-        match sqlx::query!("SELECT id, provider FROM users WHERE id = ?", user_id)
-            .fetch_optional(&mut *tx)
-            .await
-        {
-            Ok(opt) => opt.unwrap(), // hopefully the user sending request has a user id
-            Err(err) => {
-                eprintln!("DB error fetching current user: {}", err);
-                return json_response(
-                    json!({ "error": err.to_string() }),
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                );
-            }
-        };
+    let current_user_row = match sqlx::query!(
+        "SELECT id, provider, username FROM users WHERE id = ?",
+        user_id
+    )
+    .fetch_optional(&mut *tx)
+    .await
+    {
+        Ok(opt) => opt.unwrap(), // hopefully the user sending request has a user id
+        Err(err) => {
+            eprintln!("DB error fetching current user: {}", err);
+            return json_response(
+                json!({ "error": err.to_string() }),
+                StatusCode::INTERNAL_SERVER_ERROR,
+            );
+        }
+    };
 
     let current_provider = current_user_row.provider;
+    let current_username = current_user_row.username;
     let final_user_id: String;
+    let mut final_username: Option<String> = None;
 
     println!("google_id {}", google_id);
     // Helper: check if google user already exists
@@ -213,6 +220,7 @@ pub async fn google_auth_login_handler(
                 }
 
                 final_user_id = google_user_id;
+                final_username = Some(row.username);
                 tracing::info!("Merged guest {} -> google {}", guest_user_id, final_user_id);
             }
             Ok(None) => {
@@ -234,6 +242,7 @@ pub async fn google_auth_login_handler(
                 }
 
                 final_user_id = guest_user_id;
+                final_username = Some(name);
                 tracing::info!(
                     "Upgraded guest {} -> google (provider_id set)",
                     final_user_id
@@ -301,7 +310,13 @@ pub async fn google_auth_login_handler(
             StatusCode::INTERNAL_SERVER_ERROR,
         );
     }
-
+    if let Some(final_username) = &final_username {
+        if let Err(err) =
+            update_username_in_redis(&state.redis_pool, &current_username, final_username).await
+        {
+            tracing::error!("Failed to update Redis leaderboard usernames: {}", err);
+        }
+    }
     // 3. Create JWT for this user
     let token = create_jwt(&final_user_id, &state.env.jwt_secret);
 
