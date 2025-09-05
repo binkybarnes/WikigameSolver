@@ -1,4 +1,4 @@
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 use std::{
     collections::VecDeque,
     fs::File,
@@ -622,6 +622,76 @@ where
             redirects_passed,
             true,
         ));
+    }
+
+    None
+}
+
+pub fn bi_bfs_csr_depth_only<G>(graph: &G, start: u32, goal: u32) -> Option<u8>
+where
+    G: CsrGraphTrait,
+{
+    if start == goal {
+        return Some(0);
+    }
+
+    let mut visited_fwd: FxHashSet<u32> = FxHashSet::default();
+    let mut visited_bwd: FxHashSet<u32> = FxHashSet::default();
+
+    let mut queue_fwd: VecDeque<u32> = VecDeque::new();
+    let mut queue_bwd: VecDeque<u32> = VecDeque::new();
+
+    visited_fwd.insert(start);
+    visited_bwd.insert(goal);
+
+    queue_fwd.push_back(start);
+    queue_bwd.push_back(goal);
+
+    let mut depth_fwd: u8 = 0;
+    let mut depth_bwd: u8 = 0;
+
+    while !queue_fwd.is_empty() && !queue_bwd.is_empty() {
+        // pick the smaller frontier to expand
+        let (queue, visited_this, visited_other, depth, backwards) =
+            if queue_fwd.len() <= queue_bwd.len() {
+                (
+                    &mut queue_fwd,
+                    &mut visited_fwd,
+                    &visited_bwd,
+                    &mut depth_fwd,
+                    false,
+                )
+            } else {
+                (
+                    &mut queue_bwd,
+                    &mut visited_bwd,
+                    &visited_fwd,
+                    &mut depth_bwd,
+                    true,
+                )
+            };
+
+        *depth += 1;
+        let level_size = queue.len();
+
+        for _ in 0..level_size {
+            let node = queue.pop_front().unwrap();
+            let neighbors = if backwards {
+                graph.get_reverse(node)
+            } else {
+                graph.get(node)
+            };
+
+            for &neighbor in neighbors {
+                if visited_other.contains(&neighbor) {
+                    // first meeting point found
+                    return Some(depth_fwd + depth_bwd);
+                }
+                if visited_this.insert(neighbor) {
+                    queue.push_back(neighbor);
+                }
+            }
+        }
     }
 
     None

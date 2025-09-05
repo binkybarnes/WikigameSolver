@@ -182,7 +182,8 @@ pub async fn google_auth_login_handler(
     .fetch_optional(&mut *tx)
     .await;
 
-    // TODO!!!! DO THE REDIS LEADERBOARD USERNAME CHANGE ON THESE CASES
+    let mut first_time = false;
+
     if current_provider == "guest" {
         // --- The normal/expected flow: requester is a guest -> either merge into existing google or upgrade guest to google
         let guest_user_id = &user_id;
@@ -227,11 +228,11 @@ pub async fn google_auth_login_handler(
                 // Upgrade guest -> google (set provider and provider_id, update username)
                 let guest_user_id = user_id;
                 if let Err(err) = sqlx::query!(
-                "UPDATE users SET provider = 'google', provider_id = ?, username = ? WHERE id = ?",
-                google_id,
-                name,
-                guest_user_id
-            )
+                    "UPDATE users SET provider = 'google', provider_id = ? WHERE id = ?",
+                    google_id,
+                    // name,
+                    guest_user_id
+                )
                 .execute(&mut *tx)
                 .await
                 {
@@ -242,7 +243,8 @@ pub async fn google_auth_login_handler(
                 }
 
                 final_user_id = guest_user_id;
-                final_username = Some(name);
+                // final_username = Some(name);
+                first_time = true;
                 tracing::info!(
                     "Upgraded guest {} -> google (provider_id set)",
                     final_user_id
@@ -289,6 +291,7 @@ pub async fn google_auth_login_handler(
                 }
 
                 final_user_id = new_id;
+                first_time = true;
                 tracing::info!(
                     "Requester was non-guest; created new google user {} (no merge/upgrade)",
                     final_user_id
@@ -330,7 +333,10 @@ pub async fn google_auth_login_handler(
             .into(),
     );
 
-    json_response(json!({ "user_id": final_user_id}), StatusCode::OK)
+    json_response(
+        json!({ "user_id": final_user_id, "first_time": first_time }),
+        StatusCode::OK,
+    )
 }
 
 pub async fn logout_handler(

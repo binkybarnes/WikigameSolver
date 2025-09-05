@@ -14,7 +14,9 @@ mod parsers;
 mod routes;
 mod search; // This is important!
 
+use std::cmp::Reverse;
 use std::net::SocketAddr;
+use std::sync::atomic::AtomicUsize;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -54,6 +56,9 @@ struct Args {
     #[arg(long)]
     rebuild: bool,
 
+    #[arg(long)]
+    benchmark: bool,
+
     /// Port for the API server
     #[arg(short, long, default_value_t = 3000)]
     port: u16,
@@ -64,6 +69,7 @@ use reqwest::header::ACCEPT;
 use reqwest::header::CONTENT_TYPE;
 use reqwest::header::ETAG;
 use reqwest::header::IF_NONE_MATCH;
+use rustc_hash::FxHashMap;
 use std::sync::Arc;
 use tower_governor::governor::GovernorConfigBuilder;
 use tower_governor::GovernorLayer;
@@ -151,9 +157,28 @@ fn save_titles_to_file(
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    let args = Args::parse();
     let now = Instant::now();
 
-    let args = Args::parse();
+    if args.benchmark {
+        // let dense_id_to_title = Arc::new(load_dense_id_to_title_mmap()?);
+        // print_top_paths(
+        //     "results/top_paths_1756748771.bin",
+        //     dense_id_to_title.clone(),
+        //     200,
+        // )?;
+
+        // return Ok(());
+
+        let num_threads = num_cpus::get(); // logical cores
+        println!("running on {} threads", num_threads);
+        let filename = run_bfs_worker(num_threads, 10000, 5 * num_threads * 10000)?;
+        println!("BFS finished. Results saved to {}", filename);
+        println!("Elapsed: {:.2?}", now.elapsed());
+
+        return Ok(());
+    }
+    // ------------------------------------------------------------------------
 
     let _guard = init_tracing();
     tracing::error!("this is a test error");
@@ -266,7 +291,7 @@ async fn main() -> anyhow::Result<()> {
     // tracing::subscriber::set_global_default(subscriber).unwrap();
 
     let governor_conf = GovernorConfigBuilder::default()
-        .per_second(2)
+        .per_second(4)
         .burst_size(5)
         .finish()
         .unwrap();
@@ -327,6 +352,159 @@ async fn main() -> anyhow::Result<()> {
 
     let elapsed = now.elapsed();
     println!("Elapsed: {:.2?}", elapsed);
+
+    Ok(())
+}
+
+use rand::Rng;
+use std::{
+    collections::{BinaryHeap, VecDeque},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Mutex,
+    },
+    thread,
+    time::{SystemTime, UNIX_EPOCH},
+};
+
+// import your BFS and graph code
+use crate::load_csr_graph_mmap;
+use crate::search::*;
+
+/// Runs multithreaded BFS workers for random article pairs.
+/// Stops on Enter key and saves top paths to a timestamped binary file.
+
+pub fn run_bfs_worker(
+    num_threads: usize,
+    top_k_per_thread: usize,
+    top_k_global: usize,
+) -> anyhow::Result<String> {
+    // Load graph
+    let csr_graph = Arc::new(load_csr_graph_mmap()?);
+
+    // Stoppable flag
+    let stop_flag = Arc::new(AtomicBool::new(false));
+
+    // Thread-local BFS counters
+    let bfs_counts: Arc<Vec<AtomicUsize>> =
+        Arc::new((0..num_threads).map(|_| AtomicUsize::new(0)).collect());
+
+    let start_time = Instant::now();
+
+    // Spawn worker threads
+    let mut handles = vec![];
+    for i in 0..num_threads {
+        let graph = csr_graph.clone();
+        let stop = stop_flag.clone();
+        let top_k = top_k_per_thread;
+        let bfs_count = bfs_counts.clone();
+        let handle = thread::spawn(move || {
+            let mut heap: BinaryHeap<Reverse<(u8, u32, u32)>> = BinaryHeap::new();
+            let mut rng = rand::rng();
+            while !stop.load(Ordering::Relaxed) {
+                let start = rng.random_range(0..graph.num_nodes()) as u32;
+                let goal = rng.random_range(0..graph.num_nodes()) as u32;
+
+                if let Some(depth) = bi_bfs_csr_depth_only(&*graph, start, goal) {
+                    let rev_item = Reverse((depth, start, goal));
+                    if heap.len() < top_k {
+                        heap.push(rev_item);
+                    } else if let Some(&Reverse((min_depth, _, _))) = heap.peek() {
+                        if depth > min_depth {
+                            heap.pop();
+                            heap.push(rev_item);
+                        }
+                    }
+                    bfs_count[i].fetch_add(1, Ordering::Relaxed);
+                }
+            }
+            heap
+        });
+        handles.push(handle);
+    }
+
+    // Stop on Enter key
+    println!("Press Enter to stop BFS workers...");
+    let stop_clone = stop_flag.clone();
+    thread::spawn(move || {
+        let mut input = String::new();
+        std::io::stdin().read_line(&mut input).unwrap();
+        stop_clone.store(true, Ordering::Relaxed);
+    });
+
+    // Wait for threads and collect their heaps
+    let mut global_heap: BinaryHeap<Reverse<(u8, u32, u32)>> = BinaryHeap::new();
+    for (i, handle) in handles.into_iter().enumerate() {
+        let local_heap = handle.join().unwrap();
+        for rev_item in local_heap {
+            if global_heap.len() < top_k_global {
+                global_heap.push(rev_item);
+            } else if let Some(&Reverse((min_depth, _, _))) = global_heap.peek() {
+                if rev_item.0 .0 > min_depth {
+                    global_heap.pop();
+                    global_heap.push(rev_item);
+                }
+            }
+        }
+    }
+
+    // BFS statistics
+    let total_bfs: usize = bfs_counts.iter().map(|c| c.load(Ordering::Relaxed)).sum();
+    let elapsed_secs = start_time.elapsed().as_secs_f64();
+
+    println!("Total BFS runs: {}", total_bfs);
+    println!("Threads used: {}", num_threads);
+    println!("Top K global paths: {}", top_k_global);
+
+    println!("Total BFS runs: {}", total_bfs);
+    println!("Elapsed time: {:.2} seconds", elapsed_secs);
+    println!("BFS per second: {:.2}", total_bfs as f64 / elapsed_secs);
+
+    // Count per depth
+    let mut depth_counts: FxHashMap<u8, usize> = FxHashMap::default();
+    for &Reverse((depth, _start, _goal)) in global_heap.iter() {
+        *depth_counts.entry(depth).or_insert(0) += 1;
+    }
+
+    let mut depths: Vec<_> = depth_counts.keys().cloned().collect();
+    depths.sort_unstable_by(|a, b| b.cmp(a));
+    for depth in depths {
+        println!("Depth {}: {}", depth, depth_counts[&depth]);
+    }
+
+    // Save to file
+    let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
+    let filename = format!("results/top_paths_{}.bin", timestamp);
+    let vec_to_save: Vec<(u8, u32, u32)> = global_heap.into_iter().map(|Reverse(t)| t).collect();
+    util::save_to_file(&vec_to_save, &filename)?;
+    println!("Saved global heap to {}", filename);
+
+    Ok(filename)
+}
+
+pub fn print_top_paths(
+    path: &str,
+    dense_id_to_title: Arc<DenseIdToTitleMmap>,
+    top_k: usize,
+) -> anyhow::Result<()> {
+    // Load the saved vector from file
+    let mut paths: Vec<(u8, u32, u32)> = util::load_from_file(path)?;
+
+    // Sort by depth descending
+    paths.sort_unstable_by(|a, b| b.0.cmp(&a.0));
+
+    println!("Top {} paths from file {}:", top_k, path);
+    for (i, &(depth, start, goal)) in paths.iter().take(top_k).enumerate() {
+        let start_title = dense_id_to_title.get(start);
+        let goal_title = dense_id_to_title.get(goal);
+        println!(
+            "{}. Depth {}: {} -> {}",
+            i + 1,
+            depth,
+            start_title,
+            goal_title
+        );
+    }
 
     Ok(())
 }

@@ -57,7 +57,8 @@ impl CsrGraphTrait for CsrGraphMmap {
         &revedges[start..end]
     }
     fn num_nodes(&self) -> usize {
-        self.offsets.len()
+        let offsets: &[u32] = util::mmap_as_u32_slice(&self.offsets);
+        offsets.len().saturating_sub(1)
     }
 }
 
